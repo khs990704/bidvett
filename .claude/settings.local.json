@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ':*)",
+      "Bash(npm install:*)",
+      "Bash(pkill -f \"vite\")",
+      "Bash(python3 -c \"import datetime; print\\('Server today:', datetime.date.today\\(\\)\\); from datetime import timezone, timedelta; kst=timezone\\(timedelta\\(hours=9\\)\\); print\\('KST today:', datetime.datetime.now\\(kst\\).date\\(\\)\\)\")",
+      "Bash(awk '/^## / || /^### /' /Users/heesubkim/project/bidvett/spec/03_api_preview.md)",
+      "Bash(pnpm --version)",
+      "Bash(brew list *)"
+    ]
+  }
+}

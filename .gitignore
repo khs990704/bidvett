@@ -1,0 +1,71 @@
+# ---------- Next.js ----------
+.next/
+out/
+build/
+next-env.d.ts.bak
+
+# ---------- Node / package managers ----------
+node_modules/
+.pnpm-store/
+.npm/
+.yarn/install-state.gz
+.yarn/cache
+.yarn/build-state.yml
+.yarn/unplugged
+package-lock.json
+yarn.lock
+# (pnpm-lock.yaml is intentionally tracked — keep it committed)
+
+# ---------- Environment / Secrets ----------
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+# Keep .env.example committed as the canonical key list
+
+# ---------- Vercel ----------
+.vercel/
+.now/
+
+# ---------- TypeScript ----------
+*.tsbuildinfo
+
+# ---------- Testing ----------
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# ---------- Editor / OS ----------
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ---------- Logs ----------
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---------- Sentry ----------
+.sentryclirc
+
+# ---------- Supabase CLI local state ----------
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+
+# ---------- DO NOT IGNORE (sidecar docs intentionally tracked) ----------
+# !idea.md, !idea_inquiry.md, !_workspace/**, !spec/** are tracked by default
+# (no explicit rules added — none of the above patterns match them)

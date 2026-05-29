@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel in-progress runs on the same ref when a newer commit lands
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+  PNPM_VERSION: "9"
+  # Build-time env stubs so `next build` does not fail on missing public envs.
+  # These are NOT real values — they only satisfy presence checks for the bundler.
+  # Real Vercel deployments inject the actual values from Project Env Vars.
+  NEXT_PUBLIC_SUPABASE_URL: "https://stub.supabase.co"
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: "stub-anon-key"
+  NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_test_stub"
+  NEXT_PUBLIC_STRIPE_PRICE_SINGLE: "price_stub_single"
+  NEXT_PUBLIC_STRIPE_PRICE_WEEKLY: "price_stub_weekly"
+  NEXT_PUBLIC_STRIPE_PRICE_MONTHLY: "price_stub_monthly"
+  NEXT_PUBLIC_SENTRY_DSN: ""
+
+jobs:
+  install:
+    name: Install & cache deps
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+  lint:
+    name: Lint (eslint)
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm lint
+
+  typecheck:
+    name: Typecheck (tsc --noEmit)
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm typecheck
+
+  test:
+    name: Unit tests (vitest)
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm test
+
+  build:
+    name: Build (next build)
+    needs: [lint, typecheck, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile=false
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: |
+            .next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ hashFiles('**/*.ts', '**/*.tsx') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('**/pnpm-lock.yaml') }}-
+      - run: pnpm build
+
+# ----------------------------------------------------------------------
+# Required GitHub Actions secrets (set in Settings > Secrets and variables > Actions)
+# ----------------------------------------------------------------------
+# None are strictly required for CI today: build/lint/test all run with stubbed
+# NEXT_PUBLIC_* envs above. The real secrets live only in Vercel Project Env Vars
+# (Preview / Production). If you later add integration tests that hit Supabase
+# or OpenAI in CI, register secrets like:
+#   - SUPABASE_TEST_URL / SUPABASE_TEST_ANON_KEY / SUPABASE_TEST_SERVICE_ROLE_KEY
+#   - OPENAI_API_KEY_TEST
+# and reference them as ${{ secrets.<NAME> }} inside the relevant job.
