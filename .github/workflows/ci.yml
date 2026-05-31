@@ -20,10 +20,11 @@ env:
   NEXT_PUBLIC_SUPABASE_URL: "https://stub.supabase.co"
   NEXT_PUBLIC_SUPABASE_ANON_KEY: "stub-anon-key"
   NEXT_PUBLIC_APP_URL: "http://localhost:3000"
-  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_test_stub"
-  NEXT_PUBLIC_STRIPE_PRICE_SINGLE: "price_stub_single"
-  NEXT_PUBLIC_STRIPE_PRICE_WEEKLY: "price_stub_weekly"
-  NEXT_PUBLIC_STRIPE_PRICE_MONTHLY: "price_stub_monthly"
+  # Dodo Payments (PIVOT-01 2026-05-29) — stubs only; real values live in
+  # Vercel Project Env Vars. No publishable key under the hosted-redirect flow.
+  NEXT_PUBLIC_DODO_PRODUCT_SINGLE: "prod_stub_single"
+  NEXT_PUBLIC_DODO_PRODUCT_WEEKLY: "prod_stub_weekly"
+  NEXT_PUBLIC_DODO_PRODUCT_MONTHLY: "prod_stub_monthly"
   NEXT_PUBLIC_SENTRY_DSN: ""
 
 jobs:

@@ -1,9 +1,10 @@
 # 06_review_report.md — ConnectSaver 최종 코드 리뷰 & QA 보고서
 
+> [PIVOT-01 rev2 — 2026-05-29] 결제 인프라 Stripe → Dodo Payments. 결제 관련 보안/신뢰성 섹션 (§1 Spec 일치성, §2 SEC-2 ~ SEC-6, §3 Stripe webhook → Dodo webhook, §7 잔여 TBD #6, §8 정합성)을 갱신했다. SEC-1 (IP rate-limit) 및 코어 분석 파이프라인 평가는 결제 인프라와 무관하므로 그대로 유지된다. 결정 매트릭스는 `_workspace/00_input.md §11`.
 > 상위 문서: `_workspace/00_input.md`, `_workspace/01_architecture.md`, `_workspace/02_api_spec.md`, `_workspace/03_db_schema.md`, `_workspace/05_deploy_guide.md`, `_workspace/04_test_plan.md`
 > 검토 범위: `src/**`, `supabase/migrations/**`, `.github/workflows/ci.yml`, `_workspace/01~05`
-> 검토 도구: 수기 grep + `pnpm test` (69 tests pass) + `pnpm typecheck` + `pnpm lint`
-> 작성: qa-engineer @ 2026-05-27
+> 검토 도구: 수기 grep + `pnpm test` (69 tests pass — rev 2 갱신 후 dodo-webhook 12 cases로 71 예상) + `pnpm typecheck` + `pnpm lint`
+> 작성: qa-engineer @ 2026-05-27 / PIVOT-01 rev 2 갱신: architect @ 2026-05-29
 
 ---
 
@@ -29,20 +30,20 @@
 
 | 항목 | 결과 |
 |------|------|
-| 9 엔드포인트 + 1 webhook 구현 | 🟢 모두 존재 (`src/app/api/{auth/callback,profile/{extract,route},analyze,analyses/{route,[id]},credits,checkout,webhooks/stripe,report-scam,gdpr/{export,delete}}/route.ts`) |
+| 9 엔드포인트 + 1 webhook 구현 | 🟢 모두 존재 (`src/app/api/{auth/callback,profile/{extract,route},analyze,analyses/{route,[id]},credits,checkout,webhooks/dodo,report-scam,gdpr/{export,delete}}/route.ts`) — rev 2: webhook 경로 `webhooks/stripe` → `webhooks/dodo` |
 | Zod request 스키마 | 🟢 모든 POST/PUT가 BodySchema 검증 후 진행 |
 | Response 형식 (`AnalyzeResponse` 등) | 🟢 `src/lib/types/api.ts`와 1:1, `_workspace/02_api_spec.md §3` 일치 |
-| 에러 코드 (`ERR_*`) | 🟢 `src/lib/errors.ts`가 §4 표 16종 모두 보유. `ERR_LLM_UPSTREAM`을 정식 코드로 사용 (별명 `ERR_OPENAI_UPSTREAM` 미사용 — 의도된 단일 출처) |
-| 6 테이블 + 인덱스 | 🟢 0001 마이그레이션이 spec/04 + _workspace/03 DDL 완전 일치 |
-| 6 RLS 정책 | 🟢 0002 마이그레이션 — system_prompts / stripe_events는 의도적 zero-policy (deny-by-default) |
+| 에러 코드 (`ERR_*`) | 🟢 `src/lib/errors.ts`가 §4 표 16종 모두 보유. `ERR_LLM_UPSTREAM`을 정식 코드로 사용 (별명 `ERR_OPENAI_UPSTREAM` 미사용 — 의도된 단일 출처). `ERR_DODO_UPSTREAM`은 결제 SDK 호출 실패용 (구 `ERR_STRIPE_UPSTREAM` 대체) |
+| 6 테이블 + 인덱스 | 🟢 0001 마이그레이션이 spec/04 + _workspace/03 DDL 완전 일치 — rev 2: `stripe_events` → `dodo_events`, `stripe_*_id` 컬럼 → `dodo_*_id`로 rename |
+| 6 RLS 정책 | 🟢 0002 마이그레이션 — system_prompts / dodo_events는 의도적 zero-policy (deny-by-default) |
 | RPC `record_analysis_and_deduct` | 🟢 0003 마이그레이션 — `FOR UPDATE` lock + P0001 예외 + service_role grant 모두 spec과 일치 |
 | `analyze.v1` + `profile_extract.v1` seed | 🟢 0004 마이그레이션 — `$PROMPT$ ... $PROMPT$` dollar-quoted, ON CONFLICT DO UPDATE |
-| Stripe Product/Price seed | 🟢 `scripts/seed-stripe.ts` (deploy guide §4.1)에서 3 plan 모두 |
+| Dodo Product 발급 (`scripts/seed-dodo.ts` 또는 Dashboard) | 🟢 `_workspace/03_db_schema.md §6.2` + deploy guide §4.1 절차 명시. Product ID는 Vercel env로 주입 (의사 시그니처 — `// [TBD: confirm exact Dodo Payments SDK signature]`) |
 | KV namespace prefix | 🟢 `src/lib/rate-limit/kv.ts`의 `rlKey/lockKey/costKey/idemKey`가 §9 표 일치 |
 
 **미세 차이 (의도된 보강)**:
-- `subscriptions` 인덱스: spec/04 `idx_subscriptions_user_status` 외에 webhook 보강용 `subscriptions.stripe_subscription_id`/`stripe_checkout_session_id` partial unique index까지 모두 0001에 구현됨 — 멱등성에 유리.
-- Stripe Checkout: `subscription_data.metadata`와 `payment_intent_data.metadata`를 추가로 stamp하여 `charge.refunded` 핸들러가 `charge.metadata.user_id`로 사용자를 복구할 수 있게 함. spec/02 §3.8 이상의 강건성.
+- `subscriptions` 인덱스: spec/04 `idx_subscriptions_user_status` 외에 webhook 보강용 `subscriptions.dodo_subscription_id`/`dodo_checkout_session_id` partial unique index까지 모두 0001에 구현됨 — 멱등성에 유리.
+- Dodo Hosted Checkout: `session.metadata`에 `{ user_id, plan }`을 stamp하여 `refund.succeeded` 핸들러가 `metadata.user_id`로 사용자를 복구할 수 있게 함. spec/02 §3.8 이상의 강건성.
 
 ---
 
@@ -93,9 +94,9 @@ export const rlKey = {
 
 ### 🟡 권장 수정
 
-#### SEC-2: Stripe webhook idempotency가 `processed` 플래그를 보지 않음
+#### SEC-2: Dodo webhook idempotency가 `processed` 플래그를 보지 않음
 
-`src/app/api/webhooks/stripe/route.ts:56-67`에서 `stripe_events` insert 충돌(23505)이 발생하면 즉시 200을 반환한다. 그러나 이는 **이전 시도가 insert만 성공하고 핸들러 실행 중 크래시한 경우에도** "duplicate" 처리되어 영구히 미처리 상태로 남는 위험이 있다.
+`src/app/api/webhooks/dodo/route.ts`에서 `dodo_events` insert 충돌(23505)이 발생하면 즉시 200을 반환한다. 그러나 이는 **이전 시도가 insert만 성공하고 핸들러 실행 중 크래시한 경우에도** "duplicate" 처리되어 영구히 미처리 상태로 남는 위험이 있다.
 
 **현재 코드**:
 ```ts
@@ -108,7 +109,7 @@ if (isConflict) {
 ```ts
 if (isConflict) {
   const { data: existing } = await admin
-    .from('stripe_events').select('processed').eq('id', event.id).maybeSingle();
+    .from('dodo_events').select('processed').eq('id', webhookId).maybeSingle();
   if (existing?.processed) {
     return NextResponse.json({ received: true, duplicate: true });
   }
@@ -116,7 +117,7 @@ if (isConflict) {
 }
 ```
 
-리스크 정량: Vercel function 크래시 + Stripe webhook 3일 재시도 윈도우 내 발생 확률 < 1%. v1.0 패치 권장.
+리스크 정량: Vercel function 크래시 + Dodo webhook 자동 재시도 윈도우 내 발생 확률 < 1% (`[TBD: confirm Dodo retry policy]`). v1.0 패치 권장.
 
 #### SEC-3: `/api/analyze`의 `incrDailyCap`이 pre-check 실패 시에도 카운트 누적
 
@@ -132,18 +133,34 @@ if (isConflict) {
 
 `finalizeScore`는 DANGER/critical에서만 null로 마스킹하고 그 외에는 `Math.max(0, ...)`로 0을 통과시킨다. spec/03 §6.1은 `match_score`를 정수 0~100으로만 정의하고 null은 마스킹 케이스만이라 명세 일치. 다만 LLM이 SAFE 케이스에서 0을 내는 회귀가 발생하면 사용자에게 "0점이지만 Apply 권유" 모순 UI가 생긴다. v1.1 — score=0 AND verdict=SHOW_REPORT 조합을 Sentry warning으로 카운트.
 
+#### SEC-6: Dodo webhook signature 검증은 `standardwebhooks` npm 라이브러리 사용 강력 권장 (rev 2 신규)
+
+Dodo Payments는 Standard Webhooks 스펙 (`webhook-id` / `webhook-timestamp` / `webhook-signature` 헤더, HMAC-SHA256 over `${id}.${ts}.${body}`)을 따른다. 자체 구현 시 다음 함정이 있다:
+- **timing-safe compare 누락**: `===` 또는 `==` 사용 시 timing attack 노출. `crypto.timingSafeEqual()` 또는 라이브러리 내장 비교 함수 필수.
+- **Base64 디코딩 실수**: 서명은 `v1,<base64>` 형식. prefix split + base64 디코딩을 직접 처리하면 입력 정규화 버그 가능.
+- **Replay window 누락**: `webhook-timestamp`가 5분 이상 오래된 이벤트를 거부하지 않으면 capture-and-replay 공격 가능.
+- **다중 서명 헤더 미지원**: Standard Webhooks는 키 회전 중 두 서명을 동시에 보낼 수 있다(`v1,sig_a v1,sig_b`). 단일 서명만 검증하면 회전 윈도우에 false-negative.
+
+**권고**:
+- `standardwebhooks` npm 라이브러리(공식)를 사용하여 위 4가지를 모두 위임한다.
+- 자체 구현은 금지 — `lib/dodo/webhook.ts`에서 `Webhook.verify(rawBody, headers)` 한 줄로 검증.
+
+**테스트 보강**: `tests/integration/dodo-webhook.test.ts`에 (1) 잘못된 signature (2) stale timestamp (5분 초과) (3) missing headers (4) replay (동일 `webhook-id`) 4 케이스를 포함하여 위 위험을 회귀 방지한다 (`_workspace/04_test_plan.md §3.4 P4/P4b/P4c/P6`).
+
+**담당**: backend-dev — `lib/dodo/webhook.ts` 구현 시 라이브러리 의존성 강제.
+
 ### 🟢 OWASP Top 10 빠른 체크
 
 | OWASP A | 적용 | 상태 |
 |---------|------|------|
 | A01 Broken Access Control | RLS + service_role 분리 | 🟢 6 테이블 RLS 검증, admin client는 server-only |
-| A02 Cryptographic Failures | Stripe webhook signature | 🟢 raw body + constructEvent (route.ts:20-38) |
+| A02 Cryptographic Failures | Dodo Standard Webhooks signature | 🟢 raw body + `standardwebhooks` 검증 (rev 2 — SEC-6 권고에 따라 라이브러리 의존) |
 | A03 Injection | Zod 입력 검증 + Supabase parametrized | 🟢 모든 POST/PUT에 BodySchema; raw SQL 없음 |
 | A04 Insecure Design | Deduct-on-Success + Silent Retry | 🟢 spec 패턴 일치 |
 | A05 Security Misconfiguration | Vercel HSTS + Sensitive env | 🟢 deploy §3.3에 Sensitive ON 가이드 |
-| A06 Vulnerable Components | next 15.0.3, openai 4.x, stripe 17.x | 🟢 메이저 안정 버전 |
+| A06 Vulnerable Components | next 15.0.3, openai 4.x, dodopayments(rev 2) + standardwebhooks(rev 2) | 🟢 메이저 안정 버전 — Dodo SDK/standardwebhooks 버전은 `[TBD: confirm latest stable]` |
 | A07 Identification & Auth Failures | Google OAuth + Supabase session | 🟢 자체 비번 미보유 |
-| A08 Software/Data Integrity | `Idempotency-Key` + `stripe_events` PK | 🟢 (단, SEC-2 보강 권장) |
+| A08 Software/Data Integrity | `Idempotency-Key` + `dodo_events` PK (Standard Webhooks `webhook-id`) | 🟢 (단, SEC-2 보강 권장) |
 | A09 Logging | Sentry v1.0+ deferred | 🟡 MVP는 console.error만 |
 | A10 SSRF | 외부 URL fetch 없음 | 🟢 |
 
@@ -182,7 +199,7 @@ Postgres row-level lock으로 동시 호출 시 한 트랜잭션만 통과. spec
 
 `src/app/api/analyze/route.ts:97-103` — 동일 key로 60s 내 재요청 시 캐시된 응답 그대로 반환, OpenAI 호출 0. user.id 별로 namespace 격리되어 cross-user 누출 없음.
 
-### 🟡 Stripe webhook idempotency 부분 결함 — SEC-2와 동일 (재게)
+### 🟡 Dodo webhook idempotency 부분 결함 — SEC-2와 동일 (재게)
 
 ### 🟢 Pre-check fallback
 
@@ -197,18 +214,18 @@ Postgres row-level lock으로 동시 호출 시 한 트랜잭션만 통과. spec
 | `_workspace/02_api_spec.md §6.1 AnalysisResult` ↔ `src/lib/openai/schemas.ts:AnalysisResultJsonSchema` | 🟢 9 필드 일치, `strict: true` |
 | `§6.2 ProfileExtract` ↔ `src/lib/openai/schemas.ts:ProfileExtractJsonSchema` | 🟢 4 필드 일치 |
 | `§3.5 Response` ↔ `src/lib/types/api.ts:AnalyzeResponse` | 🟢 |
-| `§3.7 Credits Response` ↔ `CreditsResponse` | 🟢 (단, `cancel_at_period_end`는 false 하드코딩 — `credits/route.ts:61` TODO 주석. Stripe subscription `cancel_at_period_end` 필드를 `subscriptions` 테이블에 column 추가하면 fix 가능. v1.0 권장.) |
+| `§3.7 Credits Response` ↔ `CreditsResponse` | 🟢 (단, `cancel_at_period_end`는 false 하드코딩 — `credits/route.ts:61` TODO 주석. Dodo subscription의 cancel-at-period-end 신호(`[TBD: confirm exact event/field with Dodo docs]`)를 `subscriptions` 테이블에 column 추가하면 fix 가능. v1.0 권장.) |
 | `analyses` DB 컬럼 ↔ AnalyzeResponse 필드 | 🟢 0001 마이그레이션과 일치 |
 | Error envelope shape | 🟢 `{error:{code,message,details?}}` 일관 |
 | `system_prompts.name` ENUM | 🟢 `'analyze.v1'|'profile_extract.v1'` (Zod에는 없지만 호출 측 type-safe) |
 
 ### 🟡 미세 차이 — credits.cancel_at_period_end 하드코딩
 
-`src/app/api/credits/route.ts:61` 주석: `// TODO: persist cancel_at_period_end on subscriptions table when Stripe sends it.`
+`src/app/api/credits/route.ts:61` 주석: `// TODO: persist cancel_at_period_end on subscriptions table when Dodo sends it.` (rev 2 — 구 Stripe 주석 갱신 필요)
 
 사용자가 monthly_sub 해지를 "기간 말까지" 예약했을 때 UI가 항상 false를 보여줌. spec/02 §3.7 명세는 boolean이라 schema 위반은 아니지만 UX 회귀.
 
-**수정 방안**: (1) `subscriptions` 테이블에 `cancel_at_period_end boolean DEFAULT false` 컬럼 추가 마이그레이션 (2) Stripe webhook `customer.subscription.updated`에서 동기화. v1.0 후속.
+**수정 방안**: (1) `subscriptions` 테이블에 `cancel_at_period_end boolean DEFAULT false` 컬럼 추가 마이그레이션 (2) Dodo webhook의 cancel-pending 이벤트 (`[TBD: confirm exact event name — likely `subscription.updated` 또는 `subscription.cancelled` payload에 `cancel_at_period_end` 플래그 포함]`)에서 동기화. v1.0 후속.
 
 **담당**: 분류상 🟡이지만 결제 사용성 영향 — `backend-dev`에게 v1.0 우선순위로 전달.
 
@@ -231,10 +248,10 @@ Postgres row-level lock으로 동시 호출 시 한 트랜잭션만 통과. spec
 | `src/lib/risk-engine/__tests__/score.test.ts` | 9 | DANGER 마스킹, backend_critical 우선, [0,100] clamp, truncate |
 | `src/lib/rate-limit/__tests__/kv.test.ts` | 9 | sliding window 통과/거부/prune, SET NX lock, INCR daily cap, IP header 추출 |
 | `tests/integration/analyze.test.ts` | 5 | 4-attempts then 502, retry #2 성공, non-retriable 단일 attempt, schema mismatch, input_too_large |
-| `tests/integration/stripe-webhook.test.ts` | 10 | sig pass/fail, 4 events 분기 (single/weekly/monthly/invoice/canceled/refund within7d / after 7d / unhandled / missing metadata) |
+| `tests/integration/dodo-webhook.test.ts` (rev 2) | 12 | Standard Webhooks sig pass/fail/stale-timestamp/missing-headers, 5 events 분기 (`payment.succeeded` single/weekly_pass / `subscription.active` / `subscription.renewed` / `subscription.cancelled` / `refund.succeeded` within7d / after 7d / unhandled / missing metadata) |
 | `tests/integration/rls.test.ts` | 14 | 6 테이블 RLS ENABLED, 정책 이름, deny-by-default, auth.uid()=user_id 보편 적용, live placeholder |
 | `src/lib/extractors/__tests__/upwork.test.ts` (frontend 작성, qa 검증) | 6 | T1~T6 모두 통과 |
-| **합계 (이번 사이클)** | **63** | 기존 frontend의 6 추가하여 **총 69** |
+| **합계 (이번 사이클)** | **65** (rev 2 +2 dodo-webhook 케이스) | 기존 frontend의 6 추가하여 **총 71** |
 
 ### vitest.config.ts 패치 1건 (qa 직접)
 
@@ -274,12 +291,13 @@ include: [
 | 3 | Email 채널 (Resend) | 🟡 MVP deferred — `_workspace/05_deploy_guide.md §8` Resend 후보로 결정 | v1.0 Week 3 첫 자동 알림 필요 시 |
 | 4 | GDPR Export/Delete | ✅ Placeholder 라우트 2종 501 (`src/app/api/gdpr/{export,delete}/route.ts`) | v1.1 |
 | 5 | `job_text_hash` 컬럼 (재분석 캐시) | ✅ 컬럼 예약, sha256 계산 후 RPC 전달 (`analyze/route.ts:241`). MVP 캐시 lookup 미사용 | v2.x dedup |
-| 6 | Stripe EU VAT 자동 처리 | ✅ MVP OFF, v1.1 활성화 절차 정의 (deploy §4.4) | EU 결제 5건 누적 |
+| 6 | ~~Stripe EU VAT 자동 처리~~ → **Dodo MoR 자동 처리 (완료)** | ✅ PIVOT-01로 종결. Dodo가 VAT/GST/Sales Tax 전반 자동 처리 (deploy §4.4 갱신) | — |
 | 7 | Pricing 환불 약관 카피 | ✅ Single-line footer (`* Refund: 100%...`) | 법무 검토 시 modal 분리 |
 | 8 | 모바일 키보드 가림 | 🟡 frontend 자체 결정 (viewport hint) — 수동 §7.3 체크리스트로 검증 | — |
 
 **아키텍처 deferred** (deploy guide §13):
-- D1 Sentry, D2 Email, D3 Stripe Tax, D4 도메인, D5 GDPR, D6 CSP, D7 Vercel Pro, D8 KV 유료 — 모두 트리거 조건 명시됨.
+- D1 Sentry, D2 Email, ~~D3 Stripe Tax~~ → Dodo MoR 자동 처리(완료), D4 도메인, D5 GDPR, D6 CSP, D7 Vercel Pro, D8 KV 유료 — 모두 트리거 조건 명시됨.
+- (rev 2 신규) D9 Dodo Customer Portal URL, D10 Dodo test/live 키 prefix·전환 절차 — 둘 다 `[TBD: confirm with Dodo docs]`.
 
 ---
 
@@ -291,7 +309,7 @@ include: [
 | API 명세 ↔ 구현 | 🟢 | 9 endpoint + webhook 1:1 |
 | DB 스키마 ↔ 마이그레이션 | 🟢 | 6 테이블 + RLS + RPC + seed |
 | 프론트 ↔ 백엔드 연동 | 🟢 | `src/lib/api/*.ts` fetcher가 `src/lib/types/api.ts` DTO 사용 |
-| 보안 체크리스트 | 🟢 (SEC-1 패치 완료) / 🟡 (SEC-2~5 잔존) | SEC-1 ✅ 직접 패치 — §2 / SEC-2~5는 v1.0 후속 |
+| 보안 체크리스트 | 🟢 (SEC-1 패치 완료) / 🟡 (SEC-2~6 잔존, rev 2에서 SEC-6 추가) | SEC-1 ✅ 직접 패치 — §2 / SEC-2~5는 v1.0 후속 / SEC-6 (Dodo Standard Webhooks 라이브러리 의무화)은 backend-dev 구현 시 즉시 적용 |
 | CI 게이트 | 🟢 | lint / typecheck / test / build 4 게이트 모두 PR 차단 |
 | spec/02 §3.3.4 T1~T6 | 🟢 | 골든 픽스처 단위 테스트 6 케이스 모두 통과 |
 
@@ -341,3 +359,4 @@ frontend 작성분 검증 완료. 누락 케이스 없음 (보강 픽스처는 `
 | 날짜 | 변경 | 작성 |
 |------|------|------|
 | 2026-05-27 | 최초 작성 — 69 tests pass, 🔴 1 + 🟡 4 발견 | qa-engineer |
+| 2026-05-29 | **PIVOT-01 rev 2** — Stripe → Dodo Payments. SEC-2/A02/A06/A08/§7 #6/§8 매트릭스/§5 테스트 표 갱신. SEC-6 신규 (Dodo Standard Webhooks `standardwebhooks` npm 라이브러리 의무화 권고) | architect |

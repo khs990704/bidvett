@@ -1,6 +1,10 @@
 /**
  * GET /api/credits — current balance + active pass + active subscription.
  * Source: _workspace/02_api_spec.md §3.7.
+ *
+ * Provider: Dodo Payments (PIVOT-01 2026-05-29). Subscription rows use
+ * `dodo_customer_id` / `dodo_subscription_id` / `dodo_checkout_session_id`
+ * columns (renamed from `stripe_*` in PIVOT-01 verify phase).
  */
 import { NextResponse } from 'next/server';
 import { withErrorHandling, ApiError, ErrorCode } from '@/lib/errors';
@@ -33,7 +37,7 @@ export const GET = withErrorHandling(async (req: Request) => {
   const nowIso = new Date().toISOString();
   const { data: subs } = await supabase
     .from('subscriptions')
-    .select('plan, period_end, usage_count, soft_cap, status, stripe_subscription_id')
+    .select('plan, period_end, usage_count, soft_cap, status, dodo_subscription_id')
     .eq('user_id', user.id)
     .eq('status', 'active')
     .gt('period_end', nowIso)
@@ -56,8 +60,10 @@ export const GET = withErrorHandling(async (req: Request) => {
         period_end: sub.period_end,
         usage_this_period: sub.usage_count,
         soft_cap: sub.soft_cap,
-        // cancel_at_period_end is sourced from Stripe; without webhook field we expose false.
-        // TODO: persist cancel_at_period_end on subscriptions table when Stripe sends it.
+        // cancel_at_period_end is provider-sourced (Dodo `subscription.cancelled`
+        // event). Until we persist it on the subscriptions row, expose false.
+        // TODO(dodo-docs): confirm whether Dodo emits an at-period-end flag
+        // (vs. immediate cancel) and persist it on subscriptions when it does.
         cancel_at_period_end: false,
       };
     }

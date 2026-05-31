@@ -10,7 +10,7 @@
  *   - 0002_rls_policies.sql enables RLS on the 6 in-scope tables.
  *   - The 6 in-scope tables each have at least the policy described in
  *     _workspace/03_db_schema.md §4.
- *   - system_prompts and stripe_events have RLS enabled but no policy
+ *   - system_prompts and dodo_events have RLS enabled but no policy
  *     (deny-by-default for non-service_role).
  */
 import { describe, it, expect } from "vitest";
@@ -30,7 +30,7 @@ describe("RLS contract (static) — 0002_rls_policies.sql", () => {
     "subscriptions",
     "analyses",
     "system_prompts",
-    "stripe_events",
+    "dodo_events",
   ];
 
   it.each(ENABLED)("RLS is ENABLED on public.%s", (table) => {
@@ -63,16 +63,16 @@ describe("RLS contract (static) — 0002_rls_policies.sql", () => {
     expect(SQL).toMatch(/POLICY\s+analyses_update_report_own/);
   });
 
-  it("system_prompts and stripe_events are deny-by-default (RLS enabled, zero policies)", () => {
+  it("system_prompts and dodo_events are deny-by-default (RLS enabled, zero policies)", () => {
     // Heuristic: no CREATE POLICY line that mentions either table.
     const systemPromptsHasPolicy = /CREATE POLICY[^;]*\bsystem_prompts\b/i.test(
       SQL,
     );
-    const stripeEventsHasPolicy = /CREATE POLICY[^;]*\bstripe_events\b/i.test(
+    const dodoEventsHasPolicy = /CREATE POLICY[^;]*\bdodo_events\b/i.test(
       SQL,
     );
     expect(systemPromptsHasPolicy).toBe(false);
-    expect(stripeEventsHasPolicy).toBe(false);
+    expect(dodoEventsHasPolicy).toBe(false);
   });
 
   it("Every policy enforces auth.uid() = user_id (defence: no over-permissive predicate)", () => {

@@ -79,8 +79,8 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization)
      * - favicon.ico, robots.txt, sitemap.xml
-     * - api/webhooks/stripe (signature-authenticated, skip cookie refresh)
+     * - api/webhooks/dodo (signature-authenticated, skip cookie refresh)
      */
-    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|api/webhooks/stripe|api/auth/callback).*)",
+    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|api/webhooks/dodo|api/auth/callback).*)",
   ],
 };

@@ -1,6 +1,7 @@
 # PRD — ConnectSaver (Upwork 공고 이중 리스크 스크리닝 SaaS)
 
-> Last updated: 2026-05-27
+> [PIVOT-01 rev2 — 2026-05-29] Payment provider 변경: Stripe → Dodo Payments. 자세한 결정 매트릭스는 `_workspace/00_input.md §11` 참조. 비즈니스 모델/가격/환불 정책은 불변.
+> Last updated: 2026-05-29 (rev 2)
 > Source: `idea.md`, `idea_inquiry.md` (Q1~Q6 LGTM)
 > Language of user-facing surfaces: **English only** (Q5)
 
@@ -35,10 +36,10 @@
 | FR-6 | Matching Score | Output a 1-100 Connect Value Score weighted 40/30/30. | Technical 40% + Budget 30% + Context 30% / `score_reason` 텍스트 동봉 |
 | FR-7 | Report Dashboard | Show a verdict modal: BLOCK on risk, SHOW SCORE on safe. | `CRITICAL_RISK` OR `DANGER` → "DO NOT APPLY" 큰 경고 + 사유 노출 / 둘 다 안전 시 점수+`action_tip` 노출 |
 | FR-8 | Credit Pre-check & Deduct-on-Success | A failed OpenAI call must not consume credits. | Pre-check Hold → Silent Retry x3 → 성공 시에만 1개 차감 (`Deduct-on-Success`) / 3회 실패 시 차감 0 + "OpenAI temporary error" 안내 |
-| FR-9 | Stripe Payment (3 tiers) | Convert payments into usage rights. | $0.99 = perma-credit +1 / $4.99 = 7-day pass (100 soft cap) / $19 = 30-day subscription (500 soft cap) / Stripe Webhook → Supabase 동기화 필수 |
-| FR-10 | Refund Sync | Refunds in Stripe must reflect in Supabase credits. | `charge.refunded` Webhook → 해당 크레딧 무효화 / 환불 정책: 0회 사용 + 7일 이내만 100% 환불 |
+| FR-9 | Dodo Payments (3 tiers) | Convert payments into usage rights. | $0.99 = perma-credit +1 / $4.99 = 7-day pass (100 soft cap) / $19 = 30-day subscription (500 soft cap) / Dodo Webhook (`payment.succeeded` / `subscription.active|renewed|cancelled`) → Supabase 동기화 필수 |
+| FR-10 | Refund Sync | Refunds in Dodo Payments must reflect in Supabase credits. | `refund.succeeded` Webhook → 해당 크레딧 무효화 / 환불 정책: 0회 사용 + 7일 이내만 100% 환불 |
 | FR-11 | Report Scam | Users can flag a result as scam for prompt tuning. | `analyses.is_reported=true`, `report_reason` text 저장 → Supabase Data Browser에서 운영자가 필터링 |
-| FR-12 | Pricing Page | A public pricing page with 3 plans. | Landing/Pricing route 공개 / Stripe Checkout 진입 버튼 |
+| FR-12 | Pricing Page | A public pricing page with 3 plans. | Landing/Pricing route 공개 / Dodo Hosted Checkout 진입 버튼 |
 
 ### P1 — 있으면 좋음 (v1.0)
 
@@ -46,7 +47,7 @@
 |---|------|------|
 | FR-13 | Analysis History | 과거 분석 결과 다시 보기 (Dashboard 하단 리스트) |
 | FR-14 | Account Settings | Profile 재편집, 결제 이력, 구독 취소 |
-| FR-15 | Email Notifications | Stripe 결제 영수증, 구독 만료 1일 전 알림 ([가정] Resend or Supabase SMTP) |
+| FR-15 | Email Notifications | Dodo Payments 결제 영수증 보조 + 구독 만료 1일 전 알림 ([가정] Resend or Supabase SMTP). Dodo가 발송하는 기본 영수증은 그대로 사용. |
 | FR-16 | Soft Cap Hit UX | 주간/월간 캡 도달 시 안내 메시지 |
 | FR-17 | Public Landing Page | Reddit 트래픽 유입용 SEO 페이지 |
 
@@ -69,13 +70,13 @@
 | 가용성 | 99.5% / month (Vercel + Supabase SLA 의존) | |
 | 보안 — 인증 | Google OAuth via Supabase Auth, JWT RS256 | Q1~Q6 확정 |
 | 보안 — RLS | Supabase Row-Level Security: 모든 user-owned 테이블에 `auth.uid() = user_id` 정책 적용 | `users_profile`, `credit_ledger`, `analyses`, `subscriptions` |
-| 보안 — Webhook | Stripe Webhook signature 검증 필수 (`stripe.webhooks.constructEvent`) | |
-| 보안 — Secrets | OpenAI/Stripe/Supabase service key는 Vercel 환경변수만, 클라이언트 노출 금지 | |
+| 보안 — Webhook | Dodo Webhook signature 검증 필수 (Standard Webhooks 스펙 — `webhook-id` / `webhook-timestamp` / `webhook-signature` 헤더 HMAC-SHA256 검증, `standardwebhooks` npm 권장) | |
+| 보안 — Secrets | OpenAI/Dodo Payments/Supabase service key는 Vercel 환경변수만, 클라이언트 노출 금지 | |
 | 보안 — Rate Limit | `/api/analyze` per-user 60/min, per-IP 120/min | Vercel KV (`@vercel/kv`) — 확정 |
 | 비용 가드 | OpenAI 호출 전 입력 토큰 길이 컷오프(16k) + 일일 계정당 호출 캡 | Soft cap (주 100 / 월 500) 외 추가 안전망 |
 | 확장성 | 입력 핸들러 모듈을 `lib/extractors/` 로 분리해 크롬 익스텐션 이식 시 재사용 | Q7 확장성 요구 반영 |
 | 관측성 | Vercel Analytics + Supabase Logs + Sentry(에러) | [가정] Sentry 도입 |
-| 컴플라이언스 | Stripe 디지털 재화 환불 약관 1줄 명시 / GDPR Data Export [TBD] | |
+| 컴플라이언스 | 디지털 재화 환불 약관 1줄 명시 / GDPR Data Export [TBD] / **VAT·GST·Sales Tax는 Dodo Payments가 Merchant of Record로 자동 처리** (별도 활성화 불필요) | |
 | i18n | English-only at MVP. 모든 string은 `lib/i18n/en.ts` 또는 raw로 시작, 추후 키 추출 | |
 
 ## 4. 사용자 여정
@@ -107,7 +108,7 @@
 ```
 1. 크레딧 0 또는 패스/구독 만료 → Dashboard 상단 배너 "Out of credits"
 2. /pricing 클릭 → 3개 카드 노출
-3. Stripe Checkout (hosted) → 결제 완료 → Webhook이 Supabase에 반영
+3. Dodo Hosted Checkout → 결제 완료 → Dodo Webhook이 Supabase에 반영 (payment.succeeded / subscription.active)
 4. /dashboard 리다이렉트 → 크레딧/패스 즉시 가용
 ```
 
@@ -125,12 +126,12 @@
 
 - 크롬 익스텐션 (Phase 2 — 단, 입력 핸들러 모듈 분리는 P0에서 진행)
 - 다국어 i18n (영어 단일 시작)
-- 어드민 UI (Supabase Data Browser + Stripe Dashboard로 100% 운영)
+- 어드민 UI (Supabase Data Browser + Dodo Dashboard로 100% 운영)
 - 팀/에이전시 플랜
 - 모바일 앱
 - 자동 크롤링/스크래핑 (수동 복붙 유지로 ToS 회피)
-- 결제 영수증 자체 발행 (Stripe 영수증 그대로 사용)
-- 환불 자동화 어드민 (Stripe Dashboard에서 수동 [Refund] 클릭으로 처리, Webhook이 동기화)
+- 결제 영수증 자체 발행 (Dodo Payments 영수증 그대로 사용)
+- 환불 자동화 어드민 (Dodo Dashboard에서 수동 [Refund] 클릭으로 처리, `refund.succeeded` Webhook이 동기화)
 
 ## 6. 성공 지표 (KPI 후보)
 

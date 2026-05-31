@@ -1,13 +1,13 @@
 /**
- * POST /api/checkout — Stripe Checkout Session creation.
- * Source: _workspace/02_api_spec.md §3.8.
+ * POST /api/checkout — Dodo Payments Hosted Checkout Session creation.
+ * Source: _workspace/02_api_spec.md §3.8, _workspace/00_input.md §11.3 (PIVOT-01).
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withErrorHandling, ApiError, ErrorCode } from '@/lib/errors';
 import { requireUser } from '@/lib/supabase/require-user';
 import { checkRate, rlKey, clientIpFromHeaders } from '@/lib/rate-limit/kv';
-import { createCheckoutSession } from '@/lib/stripe/client';
+import { createCheckoutSession } from '@/lib/dodo/client';
 import type { CheckoutResponse } from '@/lib/types/api';
 
 export const runtime = 'nodejs';

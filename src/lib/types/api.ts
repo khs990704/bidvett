@@ -146,7 +146,7 @@ export type ApiErrorCode =
   | "ERR_INTERNAL"
   | "ERR_PROMPT_NOT_FOUND"
   | "ERR_LLM_UPSTREAM"
-  | "ERR_STRIPE_UPSTREAM";
+  | "ERR_PAYMENT_UPSTREAM";
 
 export interface ApiErrorEnvelope {
   error: {

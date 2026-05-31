@@ -1,7 +1,8 @@
 # 03_db_schema.md — ConnectSaver DB 스키마 확정본
 
+> [PIVOT-01 rev2 — 2026-05-29] `stripe_events` → `dodo_events` 테이블 rename. `credit_ledger.stripe_event_id` → `dodo_event_id`. `subscriptions.stripe_*` 컬럼 → `dodo_*` 컬럼. Stripe seed 스크립트 → Dodo product 발급 절차로 교체. 결정 매트릭스는 `_workspace/00_input.md §11`.
 > 상위 문서: `_workspace/00_input.md`, `_workspace/01_architecture.md`, `_workspace/02_api_spec.md`
-> 초안 출처: `spec/04_db_preview.md` (🔒 FROZEN 2026-05-27)
+> 초안 출처: `spec/04_db_preview.md` (🔒 FROZEN-rev2 2026-05-29)
 > 모든 SQL은 **PostgreSQL 15 + Supabase**에서 즉시 실행 가능한 형태. `supabase/migrations/` 디렉토리에 그대로 배치.
 
 ---
@@ -15,6 +16,8 @@
 | `analyses.cost_usd` | `[TBD]` | **추가 보류** — `input_tokens`/`output_tokens`로 후처리 view 제공 | spec/04 §7 그대로 |
 | `analyses.job_text_hash` | not null | **본 문서도 not null 유지**, unique constraint 없이 미래 캐시용 예약 | spec/04 §4 + 본 문서 §3.4 명시 |
 | `users_profile.email` | 없음 (auth.users만) | 추가 안 함 (이메일 변경 동기화 부담) | spec/04 그대로 |
+| **결제 이벤트 테이블 (PIVOT-01)** | `stripe_events` | **`dodo_events`** (PK = Standard Webhooks `webhook-id` 헤더) | Dodo Payments 전환 |
+| **결제 식별자 컬럼 (PIVOT-01)** | `stripe_customer_id` / `stripe_subscription_id` / `stripe_checkout_session_id` / `stripe_event_id` | **`dodo_customer_id` / `dodo_subscription_id` / `dodo_checkout_session_id` / `dodo_event_id`** | 동일 |
 
 ---
 
@@ -27,8 +30,8 @@ erDiagram
   AUTH_USERS ||--o{ SUBSCRIPTIONS : "has many (1 active at a time)"
   AUTH_USERS ||--o{ ANALYSES : "has many"
   ANALYSES ||--o| CREDIT_LEDGER : "may produce consume row"
-  STRIPE_EVENTS ||--o{ CREDIT_LEDGER : "originates via stripe_event_id"
-  STRIPE_EVENTS ||--o{ SUBSCRIPTIONS : "originates via stripe_event_id"
+  DODO_EVENTS ||--o{ CREDIT_LEDGER : "originates via dodo_event_id"
+  DODO_EVENTS ||--o{ SUBSCRIPTIONS : "originates via dodo_event_id"
 
   AUTH_USERS {
     uuid id PK
@@ -52,7 +55,7 @@ erDiagram
     int delta
     int balance_after
     uuid analysis_id FK_nullable
-    text stripe_event_id_nullable
+    text dodo_event_id_nullable
     text note
     timestamptz created_at
   }
@@ -65,10 +68,10 @@ erDiagram
     timestamptz period_end
     int usage_count
     int soft_cap
-    text stripe_customer_id
-    text stripe_subscription_id_nullable
-    text stripe_checkout_session_id_nullable
-    text stripe_event_id_nullable
+    text dodo_customer_id
+    text dodo_subscription_id_nullable
+    text dodo_checkout_session_id_nullable
+    text dodo_event_id_nullable
     timestamptz created_at
     timestamptz updated_at
   }
@@ -101,7 +104,7 @@ erDiagram
     bool is_active
     timestamptz created_at
   }
-  STRIPE_EVENTS {
+  DODO_EVENTS {
     text id PK
     text type
     jsonb payload
@@ -153,7 +156,7 @@ CREATE TABLE IF NOT EXISTS public.credit_ledger (
   delta             int         NOT NULL,
   balance_after     int         NOT NULL CHECK (balance_after >= 0),
   analysis_id       uuid        REFERENCES public.analyses(id) ON DELETE SET NULL,
-  stripe_event_id   text        REFERENCES public.stripe_events(id) ON DELETE SET NULL,
+  dodo_event_id     text        REFERENCES public.dodo_events(id) ON DELETE SET NULL,
   note              text,
   created_at        timestamptz NOT NULL DEFAULT now()
 );
@@ -161,11 +164,12 @@ CREATE TABLE IF NOT EXISTS public.credit_ledger (
 CREATE INDEX IF NOT EXISTS idx_credit_ledger_user_created
   ON public.credit_ledger (user_id, created_at DESC);
 
-CREATE UNIQUE INDEX IF NOT EXISTS uniq_credit_ledger_stripe_event
-  ON public.credit_ledger (stripe_event_id)
-  WHERE stripe_event_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_credit_ledger_dodo_event
+  ON public.credit_ledger (dodo_event_id)
+  WHERE dodo_event_id IS NOT NULL;
 
 COMMENT ON TABLE public.credit_ledger IS 'Append-only ledger. Balance is computed as latest row balance_after.';
+COMMENT ON COLUMN public.credit_ledger.dodo_event_id IS 'Dodo Standard Webhooks webhook-id header — idempotency key.';
 ```
 
 > **순환 FK 주의**: `credit_ledger.analysis_id` → `analyses.id`, 이후 `analyses` 테이블에서도 `credit_ledger` 참조 없음 (단방향). `analyses` 테이블이 먼저 생성되어야 함 — 본 SQL은 마이그레이션 0001에서 `analyses`를 §3.4보다 먼저 CREATE한 뒤 본 §3.2의 FK 제약을 `ALTER TABLE`로 추가하는 순서로 작성. (실용적으로는 0001 안에서 6개 테이블을 모두 만든 다음 마지막에 FK alter 묶음을 두는 패턴.)
@@ -182,10 +186,10 @@ CREATE TABLE IF NOT EXISTS public.subscriptions (
   period_end                      timestamptz NOT NULL,
   usage_count                     int         NOT NULL DEFAULT 0 CHECK (usage_count >= 0),
   soft_cap                        int         NOT NULL CHECK (soft_cap > 0),
-  stripe_customer_id              text        NOT NULL,
-  stripe_subscription_id          text,
-  stripe_checkout_session_id      text,
-  stripe_event_id                 text        REFERENCES public.stripe_events(id) ON DELETE SET NULL,
+  dodo_customer_id                text        NOT NULL,
+  dodo_subscription_id            text,
+  dodo_checkout_session_id        text,
+  dodo_event_id                   text        REFERENCES public.dodo_events(id) ON DELETE SET NULL,
   created_at                      timestamptz NOT NULL DEFAULT now(),
   updated_at                      timestamptz NOT NULL DEFAULT now()
 );
@@ -197,13 +201,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS uniq_subscriptions_active_per_user
   ON public.subscriptions (user_id)
   WHERE status = 'active';
 
-CREATE UNIQUE INDEX IF NOT EXISTS uniq_subscriptions_checkout_session
-  ON public.subscriptions (stripe_checkout_session_id)
-  WHERE stripe_checkout_session_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_subscriptions_dodo_checkout_session
+  ON public.subscriptions (dodo_checkout_session_id)
+  WHERE dodo_checkout_session_id IS NOT NULL;
 
-CREATE UNIQUE INDEX IF NOT EXISTS uniq_subscriptions_stripe_sub
-  ON public.subscriptions (stripe_subscription_id)
-  WHERE stripe_subscription_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_subscriptions_dodo_sub
+  ON public.subscriptions (dodo_subscription_id)
+  WHERE dodo_subscription_id IS NOT NULL;
+
+COMMENT ON COLUMN public.subscriptions.dodo_customer_id IS 'Dodo Payments customer identifier (returned in checkout.success / subscription.active events).';
+COMMENT ON COLUMN public.subscriptions.dodo_subscription_id IS 'Dodo subscription identifier (monthly_sub only). NULL for weekly_pass (one-time payment).';
+COMMENT ON COLUMN public.subscriptions.dodo_checkout_session_id IS 'Dodo Hosted Checkout session identifier — single-use for weekly_pass idempotency.';
 ```
 
 ### 3.4 `analyses`
@@ -269,22 +277,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS uniq_system_prompts_active_per_name
 COMMENT ON TABLE public.system_prompts IS 'Operator-editable prompt store. Single source of truth — no code hardcoding.';
 ```
 
-### 3.6 `stripe_events` (멱등성)
+### 3.6 `dodo_events` (멱등성)
 
 ```sql
-CREATE TABLE IF NOT EXISTS public.stripe_events (
-  id            text        PRIMARY KEY,
-  type          text        NOT NULL,
+CREATE TABLE IF NOT EXISTS public.dodo_events (
+  id            text        PRIMARY KEY,         -- Standard Webhooks webhook-id header value
+  type          text        NOT NULL,            -- payment.succeeded / subscription.active|renewed|cancelled / refund.succeeded
   payload       jsonb       NOT NULL,
   processed     bool        NOT NULL DEFAULT false,
   received_at   timestamptz NOT NULL DEFAULT now(),
   processed_at  timestamptz
 );
 
-CREATE INDEX IF NOT EXISTS idx_stripe_events_received
-  ON public.stripe_events (received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dodo_events_received
+  ON public.dodo_events (received_at DESC);
 
-COMMENT ON TABLE public.stripe_events IS 'Idempotency log. Webhook handler inserts ON CONFLICT DO NOTHING; if already processed=true, returns 200 immediately.';
+COMMENT ON TABLE public.dodo_events IS 'Idempotency log for Dodo Payments Standard Webhooks. PK = webhook-id header. Webhook handler inserts ON CONFLICT DO NOTHING; if already processed=true, returns 200 immediately.';
+COMMENT ON COLUMN public.dodo_events.id IS 'Dodo Standard Webhooks webhook-id header — unique per event.';
+COMMENT ON COLUMN public.dodo_events.type IS 'Dodo event type: payment.succeeded, subscription.active, subscription.renewed, subscription.cancelled, refund.succeeded.';
 ```
 
 ---
@@ -299,7 +309,7 @@ ALTER TABLE public.credit_ledger  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.subscriptions  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.analyses       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_prompts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.stripe_events  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.dodo_events    ENABLE ROW LEVEL SECURITY;
 ```
 
 ### 4.2 `users_profile` — 본인 SELECT/INSERT/UPDATE
@@ -354,7 +364,7 @@ CREATE POLICY analyses_update_report_own ON public.analyses
 --   FOR ALL USING (false) WITH CHECK (false);
 ```
 
-### 4.7 `stripe_events` — service_role only
+### 4.7 `dodo_events` — service_role only
 
 ```sql
 -- 동일: 정책 없음 → deny by default
@@ -628,46 +638,68 @@ ON CONFLICT (name, version) DO UPDATE SET content = EXCLUDED.content, is_active 
 
 > `$PROMPT$ ... $PROMPT$`는 PostgreSQL dollar-quoted string으로, 본문에 포함된 백틱/슬래시/따옴표를 모두 안전하게 escape 한다.
 
-### 6.2 Stripe Product / Price ID placeholder (`scripts/seed-stripe.ts`)
+### 6.2 Dodo Payments Product 발급 (Dashboard 수동 또는 `scripts/seed-dodo.ts`)
 
-DB 마이그레이션이 아니며 Stripe API 1회 호출 스크립트. Price ID는 Vercel Env Vars로 주입.
+DB 마이그레이션이 아니며 Dodo Payments에서 Product 3개를 1회 등록. Product ID는 Vercel Env Vars로 주입.
+
+**권장 경로 — Dodo Dashboard 수동 등록 (가장 간단)**:
+
+1. Dodo Dashboard → Products → "New product".
+2. 3개 Product 등록:
+
+| Nickname | unit_amount | currency | mode | 매핑 plan |
+|----------|-------------|----------|------|----------|
+| `single_credit_099` | 99 ($0.99) | usd | one-time | `credit_single` |
+| `weekly_pass_499` | 499 ($4.99) | usd | one-time | `weekly_pass` (앱이 7일 만료를 처리) |
+| `monthly_19` | 1900 ($19) | usd | recurring (monthly) | `monthly_sub` |
+
+3. 각 Product의 ID 복사 → Vercel Env Vars:
+   - `NEXT_PUBLIC_DODO_PRODUCT_SINGLE`
+   - `NEXT_PUBLIC_DODO_PRODUCT_WEEKLY`
+   - `NEXT_PUBLIC_DODO_PRODUCT_MONTHLY`
+
+**대안 — SDK 스크립트 (의사 시그니처 — `// [TBD: confirm exact Dodo Payments SDK signature]`)**:
 
 ```ts
-// scripts/seed-stripe.ts (devops 실행, MVP 배포 전 1회)
-// Run with: npx tsx scripts/seed-stripe.ts
-import Stripe from 'stripe';
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2024-12-18.acacia' });
+// scripts/seed-dodo.ts (devops 실행, MVP 배포 전 1회)
+// Run with: npx tsx scripts/seed-dodo.ts
+// import Dodo from 'dodopayments';
+// const dodo = new Dodo({ apiKey: process.env.DODO_API_KEY! });
 
 async function main() {
-  const product = await stripe.products.create({ name: 'ConnectSaver', description: 'Upwork dual-risk screening' });
-
-  const single = await stripe.prices.create({
-    product: product.id,
-    unit_amount: 99,        // $0.99
+  // [TBD: confirm exact Dodo Payments SDK signature]
+  const single = await dodo.products.create({
+    name: 'ConnectSaver Single Credit',
+    nickname: 'single_credit_099',
+    unitAmount: 99,
     currency: 'usd',
-    nickname: 'credit_single',
+    mode: 'payment',  // one-time
   });
-  const weekly = await stripe.prices.create({
-    product: product.id,
-    unit_amount: 499,
+  const weekly = await dodo.products.create({
+    name: 'ConnectSaver Weekly Pass',
+    nickname: 'weekly_pass_499',
+    unitAmount: 499,
     currency: 'usd',
-    nickname: 'weekly_pass',
+    mode: 'payment',
   });
-  const monthly = await stripe.prices.create({
-    product: product.id,
-    unit_amount: 1900,
+  const monthly = await dodo.products.create({
+    name: 'ConnectSaver Monthly',
+    nickname: 'monthly_19',
+    unitAmount: 1900,
     currency: 'usd',
-    recurring: { interval: 'month' },
-    nickname: 'monthly_sub',
+    mode: 'subscription',
+    recurringInterval: 'month',  // [TBD: confirm field name with Dodo docs]
   });
 
   console.log('Set these in Vercel Env Vars:');
-  console.log('NEXT_PUBLIC_STRIPE_PRICE_SINGLE=', single.id);
-  console.log('NEXT_PUBLIC_STRIPE_PRICE_WEEKLY=', weekly.id);
-  console.log('NEXT_PUBLIC_STRIPE_PRICE_MONTHLY=', monthly.id);
+  console.log('NEXT_PUBLIC_DODO_PRODUCT_SINGLE=', single.id);
+  console.log('NEXT_PUBLIC_DODO_PRODUCT_WEEKLY=', weekly.id);
+  console.log('NEXT_PUBLIC_DODO_PRODUCT_MONTHLY=', monthly.id);
 }
 main().catch(console.error);
 ```
+
+> **Note**: Dodo Payments는 Merchant of Record로 VAT/GST/Sales Tax를 자동 처리하므로 Product 생성 시 별도의 tax_code/tax_behavior 설정이 필요 없다 (Stripe Tax 활성화와 대비). 테스트/라이브 모드의 Product ID는 별도이므로 Day 14 live 전환 시 본 절차를 live mode로 다시 수행.
 
 ---
 
@@ -676,17 +708,17 @@ main().catch(console.error);
 | 테이블 | 인덱스 | 컬럼 | 용도 | 위치 |
 |--------|--------|------|------|------|
 | `credit_ledger` | btree | `(user_id, created_at desc)` | 최신 balance 조회 / 이력 페이지 | §3.2 |
-| `credit_ledger` | unique partial | `(stripe_event_id) WHERE stripe_event_id IS NOT NULL` | Webhook 멱등성 (이중 결제 차단) | §3.2 |
+| `credit_ledger` | unique partial | `(dodo_event_id) WHERE dodo_event_id IS NOT NULL` | Webhook 멱등성 (이중 결제 차단) | §3.2 |
 | `subscriptions` | btree | `(user_id, status)` | 활성 sub lookup | §3.3 |
 | `subscriptions` | unique partial | `(user_id) WHERE status='active'` | 사용자당 활성 1개 강제 (DB 보장) | §3.3 |
-| `subscriptions` | unique partial | `(stripe_checkout_session_id) WHERE NOT NULL` | weekly_pass 1회 처리 보장 | §3.3 |
-| `subscriptions` | unique partial | `(stripe_subscription_id) WHERE NOT NULL` | monthly_sub 1회 처리 보장 | §3.3 |
+| `subscriptions` | unique partial | `(dodo_checkout_session_id) WHERE NOT NULL` | weekly_pass 1회 처리 보장 | §3.3 |
+| `subscriptions` | unique partial | `(dodo_subscription_id) WHERE NOT NULL` | monthly_sub 1회 처리 보장 | §3.3 |
 | `analyses` | btree | `(user_id, created_at desc)` | 이력 리스트 cursor pagination | §3.4 |
 | `analyses` | btree partial | `(is_reported, created_at desc) WHERE is_reported=true` | 운영자 신고 모니터링 (Supabase Data Browser 필터) | §3.4 |
 | `analyses` | btree | `(job_text_hash, user_id)` | v2 dedup 캐시용 예약 (사용 X at MVP) | §3.4 |
 | `system_prompts` | unique | `(name, version)` | 동일 (name,version) 중복 차단 | §3.5 |
 | `system_prompts` | unique partial | `(name) WHERE is_active=true` | active 1개 강제 (무중단 스위치) | §3.5 |
-| `stripe_events` | btree | `(received_at desc)` | 운영 모니터링 | §3.6 |
+| `dodo_events` | btree | `(received_at desc)` | 운영 모니터링 | §3.6 |
 
 ---
 
@@ -713,8 +745,9 @@ supabase db push
 \i 0003_triggers_and_rpc.sql
 \i 0004_seed_system_prompts.sql
 
-# Stripe seed (별도, MVP 배포 전 1회):
-STRIPE_SECRET_KEY=sk_test_... npx tsx scripts/seed-stripe.ts
+# Dodo Payments Product 등록 (Dashboard 수동 권장 — §6.2 참조):
+# 또는 SDK 스크립트 (의사 시그니처):
+# DODO_API_KEY=<test-key> npx tsx scripts/seed-dodo.ts
 ```
 
 ---

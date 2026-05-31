@@ -1,8 +1,9 @@
 # 01_architecture.md — ConnectSaver 시스템 아키텍처 확정본
 
+> [PIVOT-01 rev2 — 2026-05-29] 결제 인프라 Stripe → Dodo Payments. §0 변경 메모, §4 다이어그램, §5 디렉토리, §6.7, §7.2, §8.4, §9, §10, §11, §12, §13 모두 갱신. 결정 매트릭스는 `_workspace/00_input.md §11`.
 > 상위 문서: `_workspace/00_input.md`
-> 초안 출처: `spec/02_architecture_preview.md` (🔒 FROZEN 2026-05-27)
-> 본 문서는 spec/ 초안을 **구현 단계 확정본**으로 상세화한다. spec/ 자체는 수정하지 않는다.
+> 초안 출처: `spec/02_architecture_preview.md` (🔒 FROZEN-rev2 2026-05-29)
+> 본 문서는 spec/ 초안을 **구현 단계 확정본**으로 상세화한다. spec/ 자체는 PIVOT-01에 한해 rev 2로 갱신됨.
 > 상충 시 우선순위: **본 문서 > spec/02 > idea_inquiry.md**
 
 ---
@@ -13,9 +14,10 @@
 |------|-------------|------------|------|
 | Sentry 도입 | `[가정]` | **확정 도입** (Free tier, server+client DSN 동일) | Silent Retry 가시성·OpenAI 실패율 모니터링이 운영 필수 (TD-5) |
 | Email 채널 | `[TBD]` | **MVP에서 미도입** (v1.0 Week 3 Resend로 결정 예약) | spec/06 §3 MVP scope 정렬. devops가 v1.0 진입 직전 최종 결정 |
-| Stripe Tax | 미언급 | **MVP는 OFF**, v1.1에서 Stripe Tax 자동 활성화 검토 | EU VAT 도달 시점 = 매출 발생 후. MVP는 USD 단일 가격 표시만 |
+| 세금 처리 (구 Stripe Tax) | ~~`[가정] MVP OFF, v1.1에서 Stripe Tax 검토`~~ | **Dodo Payments가 Merchant of Record로 VAT/GST/Sales Tax 자동 처리. 별도 활성화 불필요. (자동 처리됨, 완료)** | PIVOT-01 (`_workspace/00_input.md §11.4`) — TD-7 종결 |
 | KV 키 네임스페이스 | 미명세 | §5에서 prefix/TTL/알고리즘 정식 규약 | 구현 시 충돌 방지 |
 | LLM 입력 토큰 캡 | 64k chars / 16k chars 혼재 표기 | **char 64k (HTTP reject), pre-processor 후 LLM 입력 ≤ 16k chars / ≤ 4k tokens** | spec/01 §3 NFR + spec/02 §6 일치 |
+| **결제 인프라 (PIVOT-01)** | Stripe (rev 1) | **Dodo Payments (Hosted Checkout + Standard Webhooks)** | 사용자 직접 지시 (2026-05-29). 비즈니스 모델/가격/환불 정책 불변 |
 
 ---
 
@@ -26,7 +28,7 @@
 - **타깃 사용자**: Upwork 글로벌 1~5년 차 프리랜서 (자세한 페르소나는 `spec/01_prd.md` §1)
 - **프로젝트 규모**: 소규모 (MVP, 1인 풀스택 + Vercel + Supabase 단일 저장소)
 - **언어/로케일**: English-only (Q5)
-- **배포**: Vercel (Frontend + Route Handlers) + Supabase Cloud + Vercel KV + OpenAI + Stripe
+- **배포**: Vercel (Frontend + Route Handlers) + Supabase Cloud + Vercel KV + OpenAI + Dodo Payments
 
 ## 2. 기능 요구사항 (요약)
 
@@ -38,7 +40,7 @@
 | 프로필 | FR-2 Profile Onboarding (Hybrid: free-text → LLM 4필드 추출 → 사용자 확정 → DB upsert) |
 | 분석 코어 | FR-3 Paste & Analyze · FR-4 정량 Rule Engine · FR-5 정성 LLM Risk · FR-6 Match Score 40/30/30 · FR-7 Report |
 | 신뢰성 | FR-8 Pre-check + Silent Retry ×3 + Deduct-on-Success |
-| 결제 | FR-9 Stripe 3 tiers · FR-10 Refund Sync · FR-12 Pricing Page |
+| 결제 | FR-9 Dodo Payments 3 tiers · FR-10 Refund Sync · FR-12 Pricing Page |
 | 신고 | FR-11 Report Scam |
 
 ## 3. 비기능 요구사항 (확정값)
@@ -51,8 +53,8 @@
 | NFR-4 | Rate Limit `/api/analyze` | **per-user 60/min, per-IP 120/min, 동시 1 (in-flight lock)** | Vercel KV sliding window |
 | NFR-5 | Rate Limit `/api/profile/extract` | per-user 5/min, per-IP 10/min | OpenAI 비용 가드 |
 | NFR-6 | Soft Cap | weekly_pass 100/주, monthly_sub 500/월 | Pre-check에서 차단 |
-| NFR-7 | RLS | 모든 user-owned 테이블 `auth.uid() = user_id` | `system_prompts`, `stripe_events`는 service_role only |
-| NFR-8 | Webhook 보안 | `stripe.webhooks.constructEvent` signature 검증 필수 | 실패 시 400 |
+| NFR-7 | RLS | 모든 user-owned 테이블 `auth.uid() = user_id` | `system_prompts`, `dodo_events`는 service_role only |
+| NFR-8 | Webhook 보안 | Standard Webhooks 헤더 3종(`webhook-id` / `webhook-timestamp` / `webhook-signature`) HMAC-SHA256 검증 — `standardwebhooks` npm 권장 | 실패 시 400 `ERR_WEBHOOK_SIGNATURE` |
 | NFR-9 | Secrets | Vercel Encrypted Env Vars만 (client 노출 변수는 `NEXT_PUBLIC_` prefix만) | §6 표 |
 | NFR-10 | 관측성 | Sentry (Server+Client) + Vercel Analytics + Supabase Logs | Sentry 확정 도입 |
 | NFR-11 | 비용 가드 | OpenAI Daily per-user cap = `min(soft_cap, 200)` 호출 / day | KV counter `cost:daily:{user_id}` |
@@ -72,7 +74,7 @@ graph TB
     API["Route Handlers /api/*"]
     Rules["lib/risk-engine<br/>(rules.ts + score.ts)"]
     OpenAIClient["lib/openai<br/>(client.ts, schemas.ts, prompts.ts)"]
-    StripeClient["lib/stripe<br/>(client.ts, webhook.ts)"]
+    DodoClient["lib/dodo<br/>(client.ts, webhook.ts, plans.ts)"]
     KVClient["lib/rate-limit/kv.ts"]
     SupaServer["lib/supabase/server.ts"]
     SupaAdmin["lib/supabase/admin.ts<br/>(service_role)"]
@@ -91,7 +93,7 @@ graph TB
 
   subgraph External["External"]
     OpenAI["OpenAI API<br/>(gpt-4o-mini, Structured Outputs)"]
-    Stripe["Stripe<br/>(Checkout + Webhooks)"]
+    Dodo["Dodo Payments<br/>(Hosted Checkout + Standard Webhooks, MoR)"]
     Sentry["Sentry"]
   end
 
@@ -114,9 +116,9 @@ graph TB
   RPC --> PG
   Auth --> Trig
   Trig --> PG
-  Stripe -->|Webhook signed| API
-  API --> StripeClient
-  StripeClient --> Stripe
+  Dodo -->|Webhook signed<br/>(Standard Webhooks)| API
+  API --> DodoClient
+  DodoClient --> Dodo
   API --> Sentry
   RSC --> Sentry
 ```
@@ -145,7 +147,7 @@ src/
 │   │   ├── analyses/[id]/route.ts
 │   │   ├── credits/route.ts
 │   │   ├── checkout/route.ts
-│   │   ├── webhooks/stripe/route.ts
+│   │   ├── webhooks/dodo/route.ts
 │   │   └── report-scam/route.ts
 │   ├── error.tsx
 │   ├── not-found.tsx
@@ -173,10 +175,10 @@ src/
 │   │   ├── server.ts                         # @supabase/ssr server client
 │   │   ├── client.ts                         # browser client
 │   │   └── admin.ts                          # service_role (server-only)
-│   ├── stripe/
-│   │   ├── client.ts                         # Stripe SDK
-│   │   ├── webhook.ts                        # event router (4 events)
-│   │   └── plans.ts                          # plan ↔ Price ID mapping
+│   ├── dodo/
+│   │   ├── client.ts                         # dodopayments SDK wrapper
+│   │   ├── webhook.ts                        # Standard Webhooks verifier (standardwebhooks npm) + event router (5 events)
+│   │   └── plans.ts                          # plan ↔ Dodo Product ID mapping
 │   ├── rate-limit/
 │   │   └── kv.ts                             # @vercel/kv sliding window
 │   ├── sentry/
@@ -268,14 +270,27 @@ tests/
 - `client.ts`: 브라우저 클라이언트. anon key만.
 - `admin.ts`: **service_role**. RLS bypass. `credit_ledger` insert, `subscriptions` upsert, `system_prompts` 읽기 등 서버 전용 작업.
 
-### 6.7 `lib/stripe/webhook.ts`
-- **책임**: signature 검증 + 4개 이벤트 라우팅 + `stripe_events` 멱등성 기록.
+### 6.7 `lib/dodo/webhook.ts`
+- **책임**: Standard Webhooks signature 검증 + 5개 이벤트 라우팅 + `dodo_events` 멱등성 기록.
+- **서명 검증** (`standardwebhooks` npm 권장):
+  ```ts
+  // import { Webhook } from 'standardwebhooks';
+  // const wh = new Webhook(process.env.DODO_WEBHOOK_SECRET!);
+  const event = wh.verify(rawBody, {
+    'webhook-id': headers.get('webhook-id')!,
+    'webhook-timestamp': headers.get('webhook-timestamp')!,
+    'webhook-signature': headers.get('webhook-signature')!,
+  });
+  // [TBD: confirm exact Dodo Payments SDK signature]
+  ```
+  자체 구현 시 timing-safe compare 실수 위험 — 라이브러리 사용 강력 권장.
 - **처리 이벤트**:
-  - `checkout.session.completed` → plan에 따라 `credit_ledger` insert OR `subscriptions` insert
-  - `invoice.paid` → monthly_sub `period_end` 연장 + `usage_count` 리셋
-  - `customer.subscription.deleted` → `status='canceled'`
-  - `charge.refunded` → 0회 사용 + 7일 이내 검증 → 크레딧 무효화 (`credit_ledger` `type='refund_reversal'`, `delta`는 원 결제분과 동일 절댓값의 negative)
-- **멱등성**: 진입 첫 단계에 `stripe_events` insert (PK = event.id). 충돌 시 `processed=true`면 `200 OK` 즉시 반환.
+  - `payment.succeeded` → one-time 결제(single / weekly_pass) plan에 따라 `credit_ledger` insert OR `subscriptions` insert
+  - `subscription.active` → 신규 monthly_sub 활성화: `subscriptions` insert(`status='active'`, `period_end=now+30d`)
+  - `subscription.renewed` → 구 `invoice.paid` 흡수. `subscriptions.period_end += 30d`, `usage_count = 0`
+  - `subscription.cancelled` → `status='canceled'`
+  - `refund.succeeded` → 0회 사용 + 7일 이내 검증 → 크레딧 무효화 (`credit_ledger` `type='refund_reversal'`, `delta`는 원 결제분과 동일 절댓값의 negative). subscription이면 `status='refunded'`.
+- **멱등성**: 진입 첫 단계에 `dodo_events` insert (PK = Standard Webhooks `webhook-id` 헤더 값). 충돌 시 `processed=true`면 `200 OK` 즉시 반환.
 
 ### 6.8 `lib/rate-limit/kv.ts`
 - **책임**: Sliding window rate limit (`@vercel/kv`).
@@ -292,7 +307,7 @@ tests/
 
 ### 6.9 `middleware.ts`
 - **책임**: 모든 `/api/*` 진입 전 (1) Supabase 세션 검증 (2) per-IP rate limit (3) Sentry transaction 시작.
-- **예외 경로**: `/api/webhooks/stripe` (Stripe signature 자체가 인증), `/api/auth/callback` (Public).
+- **예외 경로**: `/api/webhooks/dodo` (Standard Webhooks signature 자체가 인증), `/api/auth/callback` (Public).
 - **per-user rate limit는 라우트 핸들러 내부**에서 수행 (user_id 확보 후).
 
 ## 7. 데이터 흐름 (확정)
@@ -365,37 +380,40 @@ sequenceDiagram
   participant U as User
   participant FE as Frontend
   participant API as /api/checkout
-  participant ST as Stripe
-  participant WH as /api/webhooks/stripe
+  participant DP as Dodo Payments
+  participant WH as /api/webhooks/dodo
   participant ADM as Supabase (service_role)
   participant DB as Supabase
 
   U->>FE: click Buy/Subscribe
   FE->>API: POST /api/checkout {plan}
-  API->>ST: stripe.checkout.sessions.create({line_items, success_url, cancel_url, client_reference_id=user_id})
-  ST-->>API: {url, session_id}
+  API->>DP: dodo.checkoutSessions.create({productId, successUrl, cancelUrl, customerReferenceId=user_id, metadata})
+  Note over API,DP: // [TBD: confirm exact Dodo Payments SDK signature]
+  DP-->>API: {url, session_id}
   API-->>FE: 200 {checkout_url}
-  FE->>ST: redirect (hosted page)
-  U->>ST: card payment
-  ST-->>FE: redirect success_url
-  ST->>WH: POST event (Stripe-Signature)
-  WH->>WH: constructEvent + verify sig
-  WH->>ADM: insert stripe_events (PK=event.id) ON CONFLICT DO NOTHING
+  FE->>DP: redirect (hosted page) — Dodo는 publishable key 불필요
+  U->>DP: card payment (taxes auto-calculated by Dodo MoR)
+  DP-->>FE: redirect successUrl
+  DP->>WH: POST event<br/>(webhook-id / webhook-timestamp / webhook-signature headers)
+  WH->>WH: standardwebhooks.verify(rawBody, headers)
+  WH->>ADM: insert dodo_events (PK=webhook-id) ON CONFLICT DO NOTHING
   alt already processed
-    WH-->>ST: 200 {received:true}
+    WH-->>DP: 200 {received:true}
   end
-  alt event = checkout.session.completed
-    WH->>ADM: derive plan → credit_ledger.insert (single) OR subscriptions.insert (pass/sub)
-  else event = invoice.paid
-    WH->>ADM: subscriptions.update period_end, usage_count=0
-  else event = customer.subscription.deleted
+  alt event = payment.succeeded
+    WH->>ADM: derive plan → credit_ledger.insert (single) OR subscriptions.insert (weekly_pass)
+  else event = subscription.active
+    WH->>ADM: subscriptions.insert (monthly_sub, period_end=now+30d)
+  else event = subscription.renewed
+    WH->>ADM: subscriptions.update period_end += 30d, usage_count=0
+  else event = subscription.cancelled
     WH->>ADM: subscriptions.update status='canceled'
-  else event = charge.refunded
+  else event = refund.succeeded
     WH->>DB: verify usage=0 AND age<7d
     WH->>ADM: credit_ledger.insert type='refund_reversal' delta=-N
   end
-  WH->>ADM: update stripe_events set processed=true
-  WH-->>ST: 200 {received:true}
+  WH->>ADM: update dodo_events set processed=true
+  WH-->>DP: 200 {received:true}
 ```
 
 ### 7.3 Profile Onboarding Flow
@@ -469,9 +487,21 @@ function callOpenAIWithRetry(req):
 - KV counter `cost:daily:{user_id}` (TTL 24h 자정 PST 기준). 1 increment per successful analyze.
 - 임계: `min(soft_cap, 200)`. 초과 시 `ERR_RATE_LIMITED`(429) + `details.reason='daily_safety_cap'`.
 
-### 8.4 Stripe Webhook 보안
+### 8.4 Dodo Webhook 보안 (Standard Webhooks)
 
-- 진입 첫 줄에서 `stripe.webhooks.constructEvent(rawBody, sig, STRIPE_WEBHOOK_SECRET)`. 실패 시 400 `ERR_WEBHOOK_SIGNATURE`. `raw body` 보존을 위해 Next.js Route Handler에서 `req.text()` 사용 (JSON parse 금지).
+- 진입 첫 줄에서 `standardwebhooks` npm 라이브러리로 검증:
+  ```ts
+  // import { Webhook } from 'standardwebhooks';
+  const wh = new Webhook(process.env.DODO_WEBHOOK_SECRET!);
+  const event = wh.verify(rawBody, {
+    'webhook-id': req.headers.get('webhook-id')!,
+    'webhook-timestamp': req.headers.get('webhook-timestamp')!,
+    'webhook-signature': req.headers.get('webhook-signature')!,
+  });
+  // [TBD: confirm exact Dodo Payments SDK signature]
+  ```
+- 실패 시 400 `ERR_WEBHOOK_SIGNATURE`. `raw body` 보존을 위해 Next.js Route Handler에서 `req.text()` 사용 (JSON parse 금지).
+- **자체 HMAC 구현 금지** — Standard Webhooks 스펙은 `${webhook-id}.${webhook-timestamp}.${body}` 페이로드를 HMAC-SHA256으로 서명하므로 timing-safe compare/Base64 디코딩/replay window를 모두 올바르게 처리해야 한다. 라이브러리 사용 강력 권장.
 
 ## 9. Vercel KV 키 네임스페이스 규약
 
@@ -498,12 +528,11 @@ function callOpenAIWithRetry(req):
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key | Client | Supabase Project Settings |
 | `SUPABASE_SERVICE_ROLE_KEY` | service_role | Server-only | Supabase Project Settings (Secret) |
 | `OPENAI_API_KEY` | OpenAI 호출 | Server-only | OpenAI Dashboard |
-| `STRIPE_SECRET_KEY` | Stripe Server 호출 | Server-only | Stripe Dashboard (mode-specific) |
-| `STRIPE_WEBHOOK_SECRET` | Webhook signature 검증 | Server-only | Stripe Dashboard → Webhook endpoint |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Checkout 진입용 | Client | Stripe Dashboard |
-| `NEXT_PUBLIC_STRIPE_PRICE_SINGLE` | $0.99 Price ID | Client (UI display) | Stripe Product/Price |
-| `NEXT_PUBLIC_STRIPE_PRICE_WEEKLY` | $4.99 Price ID | Client | Stripe Product/Price |
-| `NEXT_PUBLIC_STRIPE_PRICE_MONTHLY` | $19 Price ID | Client | Stripe Product/Price |
+| `DODO_API_KEY` | Dodo Payments Server 호출 (`dodopayments` npm) | Server-only | Dodo Dashboard (test/live mode-specific) — `[TBD: confirm exact key prefix (e.g. dodo_test_...)]` |
+| `DODO_WEBHOOK_SECRET` | Standard Webhooks HMAC-SHA256 검증 | Server-only | Dodo Dashboard → Webhook endpoint signing secret |
+| `NEXT_PUBLIC_DODO_PRODUCT_SINGLE` | $0.99 Dodo Product ID | Client (UI display only) | Dodo Dashboard → Products (`single_credit_099`) |
+| `NEXT_PUBLIC_DODO_PRODUCT_WEEKLY` | $4.99 Dodo Product ID | Client | Dodo Dashboard → Products (`weekly_pass_499`) |
+| `NEXT_PUBLIC_DODO_PRODUCT_MONTHLY` | $19 Dodo Product ID | Client | Dodo Dashboard → Products (`monthly_19`) |
 | `KV_URL` | Vercel KV connection | Server-only | Vercel KV (자동 주입) |
 | `KV_REST_API_URL` | Vercel KV REST | Server-only | Vercel KV (자동 주입) |
 | `KV_REST_API_TOKEN` | Vercel KV token | Server-only | Vercel KV (자동 주입) |
@@ -511,7 +540,7 @@ function callOpenAIWithRetry(req):
 | `SENTRY_DSN` | Sentry DSN (server+client 동일) | Server + `NEXT_PUBLIC_SENTRY_DSN`로 client 별도 노출 | Sentry Project |
 | `NEXT_PUBLIC_SENTRY_DSN` | Client Sentry | Client | 동일 값 OK |
 | `SYSTEM_PROMPT_VERSION` | DB 조회 실패 시 fallback version | Server-only | 배포 시 `1` 고정 |
-| `NEXT_PUBLIC_APP_URL` | OAuth redirect + Stripe success_url | Client | 환경별 (e.g. `https://app.connectsaver.com`) |
+| `NEXT_PUBLIC_APP_URL` | OAuth redirect + Dodo Hosted Checkout success_url | Client | 환경별 (e.g. `https://app.connectsaver.com`) |
 
 **Email/SMTP 변수**: MVP 미도입 → v1.0 Week 3 진입 시 `RESEND_API_KEY` 추가 검토.
 
@@ -523,7 +552,7 @@ function callOpenAIWithRetry(req):
   - Route Handler 진입 시 `supabase.auth.getUser()` → `user.id` 확보.
   - DB SELECT: Supabase RLS (`auth.uid() = user_id`).
   - DB INSERT/UPDATE/DELETE (user-owned 테이블): service_role admin client 사용 (서버 로직이 검증 후 신뢰).
-  - `system_prompts`, `stripe_events`: service_role 전용 (RLS deny by default).
+  - `system_prompts`, `dodo_events`: service_role 전용 (RLS deny by default).
 - **새 가입자 처리**: `auth.users` insert 트리거 `grant_free_credits_on_signup()`이 `credit_ledger`에 `(type='free_grant', delta=+3, balance_after=3)` 자동 삽입.
 
 ## 12. 확장 트리거 (현재 MVP → 다음 단계)
@@ -531,13 +560,13 @@ function callOpenAIWithRetry(req):
 | 항목 | MVP 상태 | 확장 트리거 |
 |------|---------|-----------|
 | Chrome Extension | `lib/extractors/upwork.ts`가 DOM 의존 없음으로 분리 완료 | **v2.0** — DAU>200 또는 사용자 요청 30건 누적 시 Manifest V3 익스텐션이 동일 모듈 import |
-| Admin UI | 0 (Supabase Data Browser + Stripe Dashboard로 100% 운영) | **DAU>500** 또는 외주 인력 위임 필요 시 |
+| Admin UI | 0 (Supabase Data Browser + Dodo Dashboard로 100% 운영) | **DAU>500** 또는 외주 인력 위임 필요 시 |
 | LLM upgrade `gpt-4o-mini` → `gpt-4o` | `gpt-4o-mini` 단일 | **v2.x Pro tier** — 결제 plan에 `pro_monthly_sub` 추가 시 |
 | Multi-tenant / Agency | 1인 1시트 | **v2.x** — Agency 요청 누적 시 `teams`, `memberships` 테이블 추가 |
 | i18n | 영어 raw string | **v2.0** — Reddit 외 지역 트래픽 30% 도달 시 `next-intl` 키 추출 |
 | Job hash 캐싱 | `analyses.job_text_hash` 컬럼만 예약 (nullable, unique 없음) | **v2.x** — 비용 모니터링 결과 평균 cost/analysis > $0.005 초과 시 24h 캐시 활성화 |
 | Email notifications | 미도입 | **v1.0 Week 3** — Resend 우선 후보 |
-| Stripe Tax (EU VAT) | OFF | **v1.1** — EU 결제 5건 누적 시 Stripe Tax 활성화 |
+| 세금 처리 | **Dodo Payments MoR 자동 처리 (완료)** — VAT/GST/Sales Tax 무관 | (PIVOT-01로 해소) |
 
 ---
 
@@ -555,22 +584,25 @@ function callOpenAIWithRetry(req):
 - `analyze.v1` 시스템 프롬프트 본문은 `spec/03 §7` 그대로. `system_prompts` seed로 적재 (코드 하드코딩 금지).
 - `profile_extract.v1` 시스템 프롬프트 본문은 `_workspace/02_api_spec.md` §8에 박혀 있음. 동일하게 seed로 적재.
 - Rate Limit 알고리즘은 §9 sliding window. `@vercel/kv` SDK 표준 사용.
-- Stripe Webhook 진입 시 raw body 보존 필수 (`req.text()`). signature 검증 실패는 400.
+- **Dodo Webhook 진입 시 raw body 보존 필수 (`req.text()`)**. Standard Webhooks 검증은 `standardwebhooks` npm 라이브러리 사용 — 자체 구현 시 timing-safe compare 실수 위험. signature 검증 실패는 400.
+- Webhook 이벤트 매핑은 5종: `payment.succeeded` / `subscription.active` / `subscription.renewed` / `subscription.cancelled` / `refund.succeeded`. 멱등성 키는 Standard Webhooks `webhook-id` 헤더 → `dodo_events.id`.
 - `record_analysis_and_deduct()` RPC는 `_workspace/03_db_schema.md` §4에 시그니처와 의사코드. 트랜잭션 내에서 SUB·PASS·CREDIT 중 하나만 차감.
-- Sentry breadcrumb: OpenAI 호출 시도별 (`category: 'openai.retry'`), Webhook 이벤트 처리 (`category: 'stripe.webhook'`).
+- Sentry breadcrumb: OpenAI 호출 시도별 (`category: 'openai.retry'`), Webhook 이벤트 처리 (`category: 'dodo.webhook'`).
 
 ### QA (`qa-engineer`)
 - p95 SLO 3초 측정: Week 2 Day 9~10에 `/api/analyze`를 골든 픽스처로 50회 호출 → p50/p95 측정. 실패 시 v2 트리거 (gpt-4o switch 또는 prompt 축약).
 - 골든 픽스처 단위 테스트 T1~T6: spec/02 §3.3.4 표 그대로.
-- 결제 E2E: Stripe Test Mode + `4242 4242 4242 4242` 카드 + 3 plans 각각.
+- 결제 E2E: Dodo Payments **test mode** (`[TBD: confirm Dodo test card number — likely 4242 4242 4242 4242 standard sandbox]`) + 3 plans 각각. 결제 후 `payment.succeeded` / `subscription.active` webhook 도착 확인.
+- Webhook 서명 검증 케이스: Standard Webhooks 헤더 3종(`webhook-id` / `webhook-timestamp` / `webhook-signature`) — (a) 정상 HMAC-SHA256 통과 (b) 잘못된 secret으로 401 → 400 변환 (c) timestamp staleness (5분 초과) 거부 (d) replay 동일 `webhook-id` 두 번째 호출 시 `dodo_events` 충돌 → 200 duplicate.
 - RLS 검증: 두 번째 계정으로 로그인 후 첫 계정의 `analyses`/`credit_ledger` row 접근 시도 → 403 확인.
-- 환불 시나리오: 결제 → 0회 사용 → 7일 이내 → Stripe Dashboard에서 [Refund] 클릭 → webhook → `credit_ledger`에 `type='refund_reversal'` row 생성 확인.
+- 환불 시나리오: 결제 → 0회 사용 → 7일 이내 → Dodo Dashboard에서 [Refund] 클릭 → `refund.succeeded` webhook → `credit_ledger`에 `type='refund_reversal'` row 생성 확인.
 
 ### DevOps (`devops-engineer`)
 - 환경변수 셋업: §10 표 전체. Vercel Project Env Vars에 Preview/Production 분리.
 - Supabase 마이그레이션: `supabase/migrations/0001~0004*.sql`을 Supabase CLI로 적용.
 - Vercel KV 프로비저닝: Vercel Dashboard → Storage → KV (Hobby tier 30k commands/day 시작). TD-6 트리거 도달 시 유료 전환.
 - Sentry: Free tier OK (5k errors/month). DSN을 server/client 동일 노출.
-- Stripe Tax: MVP OFF. v1.1에서 Stripe Tax 검토.
+- 세금: Dodo Payments가 Merchant of Record로 VAT/GST/Sales Tax 자동 처리. **별도 활성화 불필요** (구 Stripe Tax deferred 항목은 PIVOT-01로 종결).
 - Email 채널 (Resend vs Postmark vs Supabase SMTP): MVP 결정 보류. v1.0 Week 3 진입 시점에 devops가 비교표 1page로 제출 후 사용자 confirm.
-- Stripe Product/Price seed: `supabase/migrations/0004_seed_system_prompts.sql` 외 별도 `scripts/seed-stripe.ts` (Stripe API로 1회 실행). Price ID를 Vercel Env Vars에 주입.
+- Dodo Payments Product seed: 별도 스크립트 또는 Dodo Dashboard에서 수동 생성. 3개 Product(`single_credit_099` $0.99 / `weekly_pass_499` $4.99 / `monthly_19` $19/month) 생성 후 Product ID를 Vercel Env Vars `NEXT_PUBLIC_DODO_PRODUCT_*`에 주입.
+- Test/Live 키 전환: Dodo Dashboard test mode → live mode 전환 절차는 deploy guide §4에 명시 (`[TBD: confirm exact UI path with Dodo docs]`).

@@ -22,7 +22,7 @@ export const ErrorCode = {
   INTERNAL: 'ERR_INTERNAL',
   PROMPT_NOT_FOUND: 'ERR_PROMPT_NOT_FOUND',
   LLM_UPSTREAM: 'ERR_LLM_UPSTREAM',
-  STRIPE_UPSTREAM: 'ERR_STRIPE_UPSTREAM',
+  PAYMENT_UPSTREAM: 'ERR_PAYMENT_UPSTREAM',
 } as const;
 
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -42,7 +42,7 @@ const DEFAULT_MESSAGES: Record<ErrorCodeValue, string> = {
   ERR_INTERNAL: "Something went wrong. We've been notified.",
   ERR_PROMPT_NOT_FOUND: 'System prompt not configured.',
   ERR_LLM_UPSTREAM: 'The analyzer is temporarily unavailable. Please retry.',
-  ERR_STRIPE_UPSTREAM: 'Payment provider is temporarily unavailable.',
+  ERR_PAYMENT_UPSTREAM: 'Payment provider is temporarily unavailable.',
 };
 
 export class ApiError extends Error {

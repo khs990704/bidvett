@@ -1,7 +1,8 @@
 # 시스템 아키텍처 초안 — ConnectSaver
 
+> [PIVOT-01 rev2 — 2026-05-29] 결제 인프라 Stripe → Dodo Payments. 본 문서 §1, §2 다이어그램, §3.1 디렉토리, §3.2, §4.2, §6, §7, §8을 갱신했다. 결정 매트릭스는 `_workspace/00_input.md §11`.
 > Source: `spec/01_prd.md`, `idea_inquiry.md` Q1~Q6
-> Status: Preview / 초안
+> Status: Preview / rev 2 (2026-05-29)
 
 ---
 
@@ -15,7 +16,7 @@
 | Backend | Next.js Route Handlers (`app/api/*`) on Vercel Serverless | 풀스택 단일 저장소, MVP 운영 부담 최소 |
 | DB / Auth / Realtime | Supabase (PostgreSQL 15, Supabase Auth, RLS, Realtime) | OAuth + RLS + Postgres가 한 콘솔에서, No-Code Admin 운영 가능 (Q4-A) |
 | LLM | OpenAI `gpt-4o-mini` (Structured Outputs JSON Schema) | 비용/지연 최적, 정밀 필요 시 `gpt-4o` 스위치 설계 |
-| Payment | Stripe Checkout (hosted) + Webhooks | 글로벌 소액 결제 + 정기 구독, 환불 GUI 활용 (Q4-A) |
+| Payment | Dodo Payments (Hosted Checkout + Webhooks, Standard Webhooks signature) | 글로벌 소액 결제 + 정기 구독, 환불 GUI 활용 (Q4-A). **Merchant of Record** — VAT/GST/Sales Tax 자동 처리, 가맹사 별도 세무 등록 불필요 |
 | Rate Limit | Vercel KV (Upstash Redis 기반, Vercel 통합) | per-user/per-IP rate limit, Vercel 콘솔 단일 운영, `@vercel/kv` SDK 사용 |
 | Error tracking | Sentry `[가정]` | OpenAI 실패 등 Silent Retry 가시성 확보 |
 | Deploy | Vercel (Frontend + API), Supabase Cloud | CI/CD 자동, Preview Deploy |
@@ -48,7 +49,7 @@ graph TB
 
   subgraph External["External APIs"]
     OpenAI["OpenAI API<br/>(gpt-4o-mini, Structured Outputs)"]
-    Stripe["Stripe<br/>(Checkout + Webhooks)"]
+    Dodo["Dodo Payments<br/>(Hosted Checkout + Standard Webhooks)"]
   end
 
   UI --> Extractor
@@ -62,8 +63,8 @@ graph TB
   API --> Rules
   Rules --> PG
   API --> PG
-  Stripe -->|Webhook signed| API
-  API --> Stripe
+  Dodo -->|Webhook signed<br/>(Standard Webhooks)| API
+  API --> Dodo
 ```
 
 ## 3. 주요 컴포넌트
@@ -91,7 +92,7 @@ src/
 │   │   ├── analyses/route.ts
 │   │   ├── credits/route.ts
 │   │   ├── checkout/route.ts
-│   │   ├── webhooks/stripe/route.ts
+│   │   ├── webhooks/dodo/route.ts
 │   │   └── report-scam/route.ts
 │   └── layout.tsx
 ├── components/
@@ -114,9 +115,10 @@ src/
 │   │   ├── server.ts
 │   │   ├── client.ts
 │   │   └── admin.ts                  # service_role (서버 전용)
-│   ├── stripe/
-│   │   ├── client.ts
-│   │   └── webhook.ts
+│   ├── dodo/
+│   │   ├── client.ts                  # dodopayments SDK wrapper
+│   │   ├── webhook.ts                 # Standard Webhooks verifier (standardwebhooks npm)
+│   │   └── plans.ts                   # plan ↔ Dodo Product ID 매핑
 │   └── rate-limit/kv.ts                # @vercel/kv 기반
 ├── middleware.ts                     # Auth + Rate limit
 └── types/
@@ -130,7 +132,7 @@ src/
 | `lib/openai/schemas.ts` | Structured Outputs 스키마 정의. 1) Profile 추출용, 2) Analyze 통합용(정량 4필드 + 정성 5필드) |
 | `lib/risk-engine/rules.ts` | OpenAI가 채워준 정량 4필드를 입력받아 `CRITICAL_RISK` boolean 산출 |
 | `lib/risk-engine/score.ts` | 매칭 점수(40/30/30) 산출 — LLM의 raw 매칭 신호 + user_profile DB값 조합 |
-| `lib/stripe/webhook.ts` | `checkout.session.completed`, `invoice.paid`, `customer.subscription.*`, `charge.refunded` 핸들링 + Supabase 동기화 |
+| `lib/dodo/webhook.ts` | Standard Webhooks 서명 검증(`webhook-id` / `webhook-timestamp` / `webhook-signature` HMAC-SHA256, `standardwebhooks` npm) + `payment.succeeded` / `subscription.active` / `subscription.renewed` / `subscription.cancelled` / `refund.succeeded` 이벤트 라우팅 + Supabase 동기화 |
 
 ### 3.3 Frontend 전처리 모듈 — `lib/extractors/upwork.ts` (v1 확정 구현)
 
@@ -274,12 +276,12 @@ graph LR
 ```mermaid
 graph LR
   U[User] -->|Click Buy| Pricing
-  Pricing -->|POST /api/checkout| Checkout["Stripe Checkout Session"]
-  Checkout -->|hosted page| StripePay[Stripe Payment]
-  StripePay -->|charge.succeeded| Webhook["/api/webhooks/stripe"]
-  Webhook --> Verify["Verify signature<br/>(stripe.webhooks.constructEvent)"]
+  Pricing -->|POST /api/checkout| Checkout["Dodo Hosted Checkout Session"]
+  Checkout -->|hosted page| DodoPay[Dodo Payments]
+  DodoPay -->|payment.succeeded / subscription.active| Webhook["/api/webhooks/dodo"]
+  Webhook --> Verify["Verify signature<br/>(Standard Webhooks HMAC-SHA256,<br/>'standardwebhooks' npm)"]
   Verify --> Sync["Supabase admin client<br/>upsert credit_ledger / subscriptions"]
-  StripePay -->|redirect_url| Dashboard
+  DodoPay -->|redirect_url| Dashboard
 ```
 
 ### 4.3 Profile Onboarding Flow
@@ -300,7 +302,7 @@ graph LR
 - **인가 계층**:
   - Route Handler 진입 시 `getUser()`로 인증 사용자 식별
   - DB 접근은 Supabase RLS로 row-level 인가 (`auth.uid() = user_id`)
-  - Stripe Webhook, OpenAI Key 등 Server-only path는 `service_role` 키 사용 (별도 admin client)
+  - Dodo Webhook, OpenAI Key 등 Server-only path는 `service_role` 키 사용 (별도 admin client)
 
 ## 6. 비용/안정성 가드
 
@@ -311,19 +313,20 @@ graph LR
 | Soft caps | 주간 패스 100회 / 월 구독 500회 — Rule Engine 진입 전 체크 |
 | Deduct-on-Success | Pre-check Hold → 성공 시점에만 차감 |
 | Silent Retry | 5xx/timeout 시 backoff(200ms, 500ms, 1200ms) 최대 3회 |
-| Stripe signature 검증 | Webhook 진입 첫 줄 `stripe.webhooks.constructEvent` — 실패 시 400 |
-| Secrets | Vercel Encrypted Env Vars만 (Supabase service_role / OpenAI / Stripe Secret) |
+| Dodo Webhook signature 검증 | Webhook 진입 첫 줄에서 Standard Webhooks 헤더 3종(`webhook-id` / `webhook-timestamp` / `webhook-signature`) HMAC-SHA256 검증 — 실패 시 400. `standardwebhooks` npm 사용 권장 |
+| Secrets | Vercel Encrypted Env Vars만 (Supabase service_role / OpenAI / `DODO_API_KEY` / `DODO_WEBHOOK_SECRET`) |
 
 ## 7. 확장 고려사항
 
 | 항목 | 현재 (MVP) | 확장 시점 |
 |------|-----------|----------|
 | Chrome Extension | `lib/extractors/` 모듈 분리 완료 | v2.0에서 Manifest V3 익스텐션이 동일 모듈을 import |
-| Admin UI | 0 (Supabase Data Browser + Stripe Dashboard) | DAU>500 시 별도 Next.js admin segment 추가 |
+| Admin UI | 0 (Supabase Data Browser + Dodo Dashboard) | DAU>500 시 별도 Next.js admin segment 추가 |
 | LLM upgrade | `gpt-4o-mini` 단일 | 고단가 사용자 대상 `gpt-4o` 옵션 (Pro tier 추후) |
 | Multi-tenant | 단일 사용자 시트 | Agency 플랜 도입 시 `teams`, `memberships` 추가 |
 | i18n | 영어 단일 raw string | `next-intl` 도입 → `en`, `es`, `pt` 우선 |
 | 캐싱 | 없음 | 동일 공고 hash 분석 시 24h 캐시 [TBD] |
+| 세금/규정 | **Dodo Payments가 Merchant of Record로 VAT/GST/Sales Tax 자동 처리** — 별도 활성화 불필요. (이전 `[TBD] Stripe Tax 활성화` 항목은 본 pivot으로 종결) | — |
 
 ## 8. 환경변수 목록 (사전 정의)
 
@@ -333,9 +336,11 @@ graph LR
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key | Client |
 | `SUPABASE_SERVICE_ROLE_KEY` | 서버 admin 키 | Server only |
 | `OPENAI_API_KEY` | OpenAI 호출 | Server only |
-| `STRIPE_SECRET_KEY` | Stripe 서버 호출 | Server only |
-| `STRIPE_WEBHOOK_SECRET` | Webhook 검증 | Server only |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Checkout 진입 | Client |
+| `DODO_API_KEY` | Dodo Payments 서버 호출 (`dodopayments` npm SDK) | Server only |
+| `DODO_WEBHOOK_SECRET` | Standard Webhooks HMAC-SHA256 서명 검증 | Server only |
+| `NEXT_PUBLIC_DODO_PRODUCT_SINGLE` | Hosted Checkout Product ID — $0.99 단건 | Client (UI display only) |
+| `NEXT_PUBLIC_DODO_PRODUCT_WEEKLY` | Hosted Checkout Product ID — $4.99 주간 패스 | Client |
+| `NEXT_PUBLIC_DODO_PRODUCT_MONTHLY` | Hosted Checkout Product ID — $19 월 구독 | Client |
 | `KV_URL` / `KV_REST_API_URL` / `KV_REST_API_TOKEN` / `KV_REST_API_READ_ONLY_TOKEN` | Vercel KV (Rate Limit, Hash Cache) — Vercel가 자동 주입 | Server only |
 | `SENTRY_DSN` | 에러 추적 `[가정]` | Server + Client |
 | `SYSTEM_PROMPT_VERSION` | 기본 `system_prompts.active_version` 폴백 | Server only |

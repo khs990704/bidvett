@@ -14,8 +14,8 @@
  *
  * Why this lives in tests/integration: the SUT spans openai/client.ts,
  * errors.ts, schemas.ts (Zod). Full route-handler tests against
- * Supabase/Stripe live infra are out of scope at MVP (would require
- * testcontainers + Stripe CLI).
+ * Supabase / Dodo Payments live infra are out of scope at MVP (would require
+ * testcontainers + Dodo sandbox tooling).
  */
 import {
   describe,
@@ -36,8 +36,8 @@ beforeAll(() => {
   process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "stub-srk";
   process.env.OPENAI_API_KEY = "stub-openai";
-  process.env.STRIPE_SECRET_KEY = "sk_test_stub";
-  process.env.STRIPE_WEBHOOK_SECRET = "whsec_stub";
+  process.env.DODO_API_KEY = "dodo_test_stub";
+  process.env.DODO_WEBHOOK_SECRET = "whsec_stub";
 });
 
 // ── Mock the OpenAI SDK ──────────────────────────────────────────────

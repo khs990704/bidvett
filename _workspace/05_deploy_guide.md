@@ -1,5 +1,6 @@
 # 05_deploy_guide.md — ConnectSaver 배포 가이드 (확정본)
 
+> [PIVOT-01 rev2 — 2026-05-29] 결제 인프라 Stripe → Dodo Payments. §0 토폴로지, §1.1 외부 계정 #5, §3.3 환경변수 매트릭스, §4 전체(Stripe 셋업 → Dodo Payments 셋업), §5.2 환경변수 인벤토리, §5.3 smoke test #7~#9, §6.5 알람, §7.3 webhook 비활성, §9.1 secrets 검색 패턴, §13 deferred 표를 갱신했다. 결정 매트릭스는 `_workspace/00_input.md §11`.
 > 상위 문서: `_workspace/00_input.md`, `_workspace/01_architecture.md`, `_workspace/03_db_schema.md`
 > 초안 출처: `spec/02_architecture_preview.md §8`, `spec/06_milestones.md`
 > 본 문서는 MVP 첫 배포부터 운영 루틴, 롤백, 의도적 deferred 결정까지를 단일 문서로 정리한다.
@@ -18,8 +19,8 @@ graph LR
   V --> KV[("Vercel KV<br/>(Upstash Redis)")]
   NX --> SB[("Supabase Cloud<br/>(Postgres 15 + Auth + RLS)")]
   NX --> OAI["OpenAI API<br/>(gpt-4o-mini)"]
-  NX --> ST["Stripe<br/>(Checkout + Webhooks)"]
-  ST -->|Webhook signed| NX
+  NX --> DP["Dodo Payments<br/>(Hosted Checkout + Standard Webhooks, MoR)"]
+  DP -->|Webhook signed<br/>(Standard Webhooks)| NX
   NX --> SE["Sentry<br/>(v1.0+, deferred at MVP cutover)"]
 ```
 
@@ -28,7 +29,7 @@ graph LR
 | Vercel region | `iad1` (us-east-1) | Supabase 권장 리전과 동일 → cross-region latency 최소화 |
 | Supabase region | `us-east-1` (N. Virginia) | iad1 동일 PoP. 글로벌 타겟이지만 Vercel Edge 캐싱이 정적 자산을 분산 처리 |
 | `/api/analyze` maxDuration | 30s | Silent Retry x3 최대 시간(약 1.9s) + OpenAI tail latency p99 < 10s 대비 안전 마진 |
-| Stripe mode | test → live (Week 2 Day 14) | spec/06 Week 2 |
+| Dodo Payments mode | test → live (Week 2 Day 14) | spec/06 Week 2 |
 
 ---
 
@@ -42,7 +43,7 @@ graph LR
 | 2 | **Vercel 계정** | https://vercel.com/signup → GitHub 연동 | Hobby plan 시작 (Pro $20/mo는 Week 3+ 트래픽 검토 후) |
 | 3 | **Supabase 프로젝트** | https://supabase.com/dashboard → "New project" | DB password는 1password 등에 보관 |
 | 4 | **OpenAI API key** | https://platform.openai.com/api-keys → "Create new secret key" (제목: `connectsaver-prod`) | Soft limit / hard limit은 §6.3 참조 |
-| 5 | **Stripe 계정 (test mode)** | https://dashboard.stripe.com/register → 이메일 인증 → test mode 자동 활성 | live mode 활성은 Week 2 Day 14에 별도 절차 |
+| 5 | **Dodo Payments 계정 (test mode)** | https://dodopayments.com (또는 `[TBD: confirm signup URL]`) → 이메일 인증 → test mode 자동 활성 (`[TBD: confirm exact UI path with Dodo docs]`) | live mode 활성은 Week 2 Day 14에 별도 절차 |
 | 6 | **Google Cloud OAuth client** | https://console.cloud.google.com → APIs & Services → Credentials → "OAuth client ID" | §2.2 단계별 |
 | 7 | **도메인** (선택) | Cloudflare/Namecheap/Gandi 중 택1 | MVP는 Vercel 기본 도메인(`connectsaver.vercel.app`)으로 충분 |
 
@@ -119,7 +120,7 @@ Dashboard → **Authentication** → **Policies**에서 다음 6개 테이블이
 - [ ] `public.subscriptions` — 1 policy (`select_own` only)
 - [ ] `public.analyses` — 2 policies (`select_own`, `update_report_own`)
 - [ ] `public.system_prompts` — 0 policies (deny by default; service_role only)
-- [ ] `public.stripe_events` — 0 policies (deny by default; service_role only)
+- [ ] `public.dodo_events` — 0 policies (deny by default; service_role only)
 
 **검증 쿼리** (Authenticated 모드로 로그인 한 user JWT 사용):
 
@@ -170,12 +171,11 @@ Vercel Dashboard → 프로젝트 → **Settings** → **Environment Variables**
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✓ | ✓ | ✓ | Client | |
 | `SUPABASE_SERVICE_ROLE_KEY` | ✓ | ✓ | ✓ | Server | Sensitive 체크 |
 | `OPENAI_API_KEY` | dev key | prod key (test usage cap) | prod key | Server | Dev/Preview는 monthly hard limit $20 |
-| `STRIPE_SECRET_KEY` | `sk_test_...` | `sk_test_...` | `sk_live_...` (Day 14) | Server | live key는 Day 14 swap |
-| `STRIPE_WEBHOOK_SECRET` | (Stripe CLI listen) | test webhook secret | live webhook secret | Server | 각 환경 endpoint마다 다름 |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | `pk_test_...` | `pk_test_...` | `pk_live_...` | Client | |
-| `NEXT_PUBLIC_STRIPE_PRICE_SINGLE` | test price_id | test price_id | live price_id | Client | `scripts/seed-stripe.ts` 출력 |
-| `NEXT_PUBLIC_STRIPE_PRICE_WEEKLY` | ✓ | ✓ | ✓ | Client | |
-| `NEXT_PUBLIC_STRIPE_PRICE_MONTHLY` | ✓ | ✓ | ✓ | Client | |
+| `DODO_API_KEY` | test key | test key | live key (Day 14) | Server | `[TBD: confirm exact key prefix — likely 'dodo_test_...' / 'dodo_live_...']`. live key는 Day 14 swap |
+| `DODO_WEBHOOK_SECRET` | (Dodo CLI listen or test endpoint) | test webhook secret | live webhook secret | Server | 각 환경 endpoint마다 다름 |
+| `NEXT_PUBLIC_DODO_PRODUCT_SINGLE` | test product_id | test product_id | live product_id | Client (UI display only) | Dodo Dashboard → Products → copy ID. Stripe와 달리 publishable key 불필요 |
+| `NEXT_PUBLIC_DODO_PRODUCT_WEEKLY` | ✓ | ✓ | ✓ | Client | |
+| `NEXT_PUBLIC_DODO_PRODUCT_MONTHLY` | ✓ | ✓ | ✓ | Client | |
 | `KV_URL` | (auto) | (auto) | (auto) | Server | KV 연결 시 자동 주입 |
 | `KV_REST_API_URL` | (auto) | (auto) | (auto) | Server | 자동 |
 | `KV_REST_API_TOKEN` | (auto) | (auto) | (auto) | Server | 자동 |
@@ -183,7 +183,7 @@ Vercel Dashboard → 프로젝트 → **Settings** → **Environment Variables**
 | `SENTRY_DSN` | (empty until v1.0) | (empty) | (set on v1.0 launch) | Server | `[deferred]` §6.2 |
 | `NEXT_PUBLIC_SENTRY_DSN` | (empty) | (empty) | (set on v1.0) | Client | 동일 값 |
 | `SYSTEM_PROMPT_VERSION` | `1` | `1` | `1` | Server | DB 조회 실패 시 폴백 |
-| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` | `https://*.vercel.app` | `https://app.connectsaver.com` | Client | OAuth redirect + Stripe success_url |
+| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` | `https://*.vercel.app` | `https://app.connectsaver.com` | Client | OAuth redirect + Dodo Hosted Checkout success_url |
 
 **등록 절차**: 변수 하나씩 Add → Value 입력 → 환경 체크박스 선택 (Production / Preview / Development) → Save. 일괄 등록은 Vercel CLI로:
 
@@ -192,7 +192,7 @@ vercel env add OPENAI_API_KEY production
 # stdin으로 값 입력
 ```
 
-> spec/02 §8 대비 추가/변경: spec/02 §8에는 `NEXT_PUBLIC_STRIPE_PRICE_SINGLE/WEEKLY/MONTHLY`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_SENTRY_DSN`이 명시되지 않았으나 `_workspace/01_architecture.md §10`에서 모두 도입 확정됨. **본 가이드는 §10 표가 단일 출처**이며 spec/02 §8보다 우선.
+> spec/02 §8 대비 추가/변경: spec/02 §8에는 `NEXT_PUBLIC_DODO_PRODUCT_SINGLE/WEEKLY/MONTHLY`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_SENTRY_DSN`이 명시되어 있고, `_workspace/01_architecture.md §10`에서 동일하게 확정. **본 가이드는 §10 표가 단일 출처**이며 spec/02 §8보다 우선. (rev 2 — Stripe 키 셋(`STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` / `NEXT_PUBLIC_STRIPE_PRICE_*`)은 삭제됨.)
 
 ### 3.4 도메인 연결 (Day 14, 선택)
 
@@ -200,82 +200,78 @@ vercel env add OPENAI_API_KEY production
 2. DNS provider (Cloudflare 등)에서 CNAME `cname.vercel-dns.com` 추가.
 3. Vercel이 자동 SSL (Let's Encrypt) 발급 — 평균 30초.
 4. **Supabase Site URL과 Google OAuth Redirect URI를 도메인으로 업데이트** (§2.2 4번 항목). 누락 시 OAuth 콜백 실패.
-5. **Stripe Webhook endpoint URL도 업데이트** (§4.2 4번 항목).
+5. **Dodo Webhook endpoint URL도 업데이트** (§4.2 4번 항목): `https://app.connectsaver.com/api/webhooks/dodo`.
 
 ---
 
-## 4. Stripe 셋업
+## 4. Dodo Payments 셋업
 
-### 4.1 Product / Price 생성 — 스크립트 1회 실행
+### 4.0 계정 생성 + Test Mode 활성화
 
-`supabase/migrations/` 외 별도 1회용 스크립트로 처리. `_workspace/03_db_schema.md §6.2` 그대로:
+1. Dodo Payments 사이트(`[TBD: confirm exact URL with Dodo docs]`)에서 계정 생성 → 이메일 인증.
+2. Dashboard 진입 시 기본 모드는 **test mode** 자동 활성화 (`[TBD: confirm UI path — likely top-right test/live toggle similar to Stripe]`).
+3. Settings → API keys → "Reveal test key" → `DODO_API_KEY`로 사용할 test mode secret key 복사 (`[TBD: confirm exact key prefix — likely 'dodo_test_...']`).
+4. Live mode 전환은 Day 14에 별도 절차 (KYC 인증 필요할 수 있음 — `[TBD: confirm Dodo onboarding flow]`).
 
-```bash
-# 1) Stripe test mode secret key 발급: Dashboard > Developers > API keys
-export STRIPE_SECRET_KEY="sk_test_..."
+### 4.1 Product 3개 생성 — Dashboard 수동 등록 권장
 
-# 2) tsx 글로벌 미설치 시: pnpm dlx tsx scripts/seed-stripe.ts
-pnpm dlx tsx scripts/seed-stripe.ts
-```
+`_workspace/03_db_schema.md §6.2` 절차 참조. Dodo Dashboard 수동 등록이 가장 간단:
 
-출력 예시:
+1. Dashboard → **Products** → **New product** → 다음 3개를 차례로 생성:
 
-```text
-Set these in Vercel Env Vars:
-NEXT_PUBLIC_STRIPE_PRICE_SINGLE= price_1Q...
-NEXT_PUBLIC_STRIPE_PRICE_WEEKLY= price_1Q...
-NEXT_PUBLIC_STRIPE_PRICE_MONTHLY= price_1Q...
-```
+| Nickname | unit_amount | currency | mode | 매핑 plan | Vercel env 변수 |
+|----------|-------------|----------|------|----------|----------------|
+| `single_credit_099` | 99 ($0.99) | usd | one-time | `credit_single` | `NEXT_PUBLIC_DODO_PRODUCT_SINGLE` |
+| `weekly_pass_499` | 499 ($4.99) | usd | one-time | `weekly_pass` (앱이 7일 만료를 처리) | `NEXT_PUBLIC_DODO_PRODUCT_WEEKLY` |
+| `monthly_19` | 1900 ($19) | usd | recurring monthly | `monthly_sub` | `NEXT_PUBLIC_DODO_PRODUCT_MONTHLY` |
 
-→ Vercel Env Vars (§3.3)에 그대로 주입. **테스트 모드와 라이브 모드의 Price ID는 다르므로 Day 14 live 전환 시 본 스크립트를 live key로 재실행 후 Production env만 갱신**.
+2. 각 Product의 ID를 복사 → Vercel Env Vars `NEXT_PUBLIC_DODO_PRODUCT_*` (§3.3)에 그대로 주입.
 
-| Nickname | unit_amount | currency | recurring | 매핑 plan |
-|----------|-------------|----------|-----------|----------|
-| `credit_single` | 99 ($0.99) | usd | — (one-time) | `single` |
-| `weekly_pass` | 499 ($4.99) | usd | — (one-time) | `weekly_pass` (앱이 7일 만료를 처리) |
-| `monthly_sub` | 1900 ($19) | usd | `interval: month` | `monthly_sub` |
+3. **테스트 모드와 라이브 모드의 Product ID는 다르므로 Day 14 live 전환 시 본 절차를 live mode에서 재수행 후 Production env만 갱신**.
 
-> **Note on `weekly_pass`**: Stripe Recurring에 `interval: week`도 가능하지만 idea_inquiry §Q2에서 "7일 주간 무제한"으로 확정 → `customer.subscription.*` 이벤트 라이프사이클 대신 단순 one-time 결제 + 앱이 `period_end = checkout_at + 7 days`를 계산하는 모델. `subscriptions.plan='weekly_pass'`는 status='expired' 자연 만료 (재구매가 새 row). spec/02 §3, _workspace/01_architecture.md §6.7과 일치.
+> **Note on `weekly_pass`**: Dodo Payments의 recurring 옵션에 `weekly`가 있어도 idea_inquiry §Q2에서 "7일 주간 무제한"으로 확정 → 단순 one-time 결제 + 앱이 `period_end = checkout_at + 7 days`를 계산하는 모델. `subscriptions.plan='weekly_pass'`는 status='expired' 자연 만료 (재구매가 새 row). `_workspace/01_architecture.md §6.7`과 일치.
+
+> **세금 처리 (vs Stripe Tax)**: Dodo Payments는 **Merchant of Record**로 VAT/GST/Sales Tax를 자동 계산해 결제 시 가격에 합산하거나 별도 표시한다. Stripe Tax처럼 별도 활성화/설정/세무 등록이 **불필요**. Product 생성 시 tax_code/tax_behavior 필드 사용 안 함.
 
 ### 4.2 Webhook 엔드포인트 등록
 
-1. Stripe Dashboard → **Developers** → **Webhooks** → **Add endpoint**.
+1. Dodo Dashboard → **Developers** → **Webhooks** → **Add endpoint** (`[TBD: confirm exact UI path with Dodo docs]`).
 2. Endpoint URL:
-   - Test mode: `https://<vercel-preview-url>/api/webhooks/stripe`
-   - Live mode (Day 14): `https://app.connectsaver.com/api/webhooks/stripe`
-3. **Events to send** — 다음 6개만 선택:
-   - `checkout.session.completed`
-   - `customer.subscription.created`
-   - `customer.subscription.updated`
-   - `customer.subscription.deleted`
-   - `invoice.paid`
-   - `charge.refunded`
-4. Endpoint 생성 후 **Signing secret** (`whsec_...`) 복사 → Vercel env `STRIPE_WEBHOOK_SECRET`.
+   - Test mode: `https://<vercel-preview-url>/api/webhooks/dodo`
+   - Live mode (Day 14): `https://app.connectsaver.com/api/webhooks/dodo`
+3. **Events to subscribe** — 다음 5개만 선택:
+   - `payment.succeeded`
+   - `subscription.active`
+   - `subscription.renewed`
+   - `subscription.cancelled`
+   - `refund.succeeded`
+4. Endpoint 생성 후 **Signing secret** 복사 → Vercel env `DODO_WEBHOOK_SECRET`. (Standard Webhooks 호환 — `standardwebhooks` npm으로 `webhook-id` / `webhook-timestamp` / `webhook-signature` HMAC-SHA256 검증.)
 5. **Test / Live 두 endpoint 별도 운영** — signing secret도 별도. Live 전환 시 production env만 swap.
 
-> **왜 `customer.subscription.created`/`updated`도 받는가?** spec/02 §3에서는 `checkout.session.completed`만 명시했지만, monthly_sub의 경우 Stripe가 결제 후 비동기로 subscription 객체를 생성하는 race가 존재. `created`/`updated` 이벤트로 `subscriptions` row의 `stripe_subscription_id`를 보강 + `period_end` 동기화. `_workspace/01_architecture.md §6.7`과 일치.
+> **왜 `subscription.active`와 `subscription.renewed`를 분리해서 받는가?** Dodo의 monthly_sub 라이프사이클은 (a) 결제 성공 직후 `payment.succeeded`(one-time일 수도, 구독 first invoice일 수도), (b) 구독 활성화 시 `subscription.active`, (c) 매월 갱신 시 `subscription.renewed`로 신호를 보낸다. 우리는 (b)를 신규 row insert 트리거로, (c)를 `period_end += 30d` 트리거로 사용한다. 구 Stripe의 `customer.subscription.created` + `invoice.paid` 패턴을 이 두 이벤트가 흡수한다.
 
 ### 4.3 Webhook signing secret 보안 검증
 
-배포 직후 다음 명령으로 signature 검증 실패 동작 확인:
+배포 직후 다음 명령으로 Standard Webhooks signature 검증 실패 동작 확인:
 
 ```bash
-curl -X POST https://<vercel-domain>/api/webhooks/stripe \
+curl -X POST https://<vercel-domain>/api/webhooks/dodo \
   -H "Content-Type: application/json" \
-  -d '{"id":"evt_test"}'
-# → HTTP 400, body: {"error":"ERR_WEBHOOK_SIGNATURE"} 가 정상
+  -H "webhook-id: msg_test_invalid" \
+  -H "webhook-timestamp: $(date +%s)" \
+  -H "webhook-signature: v1,invalid_signature_base64" \
+  -d '{"type":"payment.succeeded"}'
+# → HTTP 400, body: {"error":{"code":"ERR_WEBHOOK_SIGNATURE", ...}} 가 정상
 ```
 
-### 4.4 Stripe Tax — **MVP는 OFF, v1.1로 deferred**
+Dodo Dashboard의 "Send test webhook" 기능(`[TBD: confirm UI path]`)으로 정상 서명된 테스트 이벤트도 발사하여 200 응답 + `dodo_events` row 생성을 확인한다.
 
-- **이유**: Stripe Tax는 거래액의 약 0.5% 추가 수수료 + EU/US 주별 세무 등록(자동 처리 옵션 사용 시) 필요. MVP 사용자 0명 시점에 활성화 = 매출 0 대비 운영 복잡도 증가.
-- **트리거 조건**: **EU 사용자 결제 누적 5건** 도달 또는 미국 매출이 $20K(연환산 California 등록 임계치)에 근접 시.
-- **활성화 시 절차** (v1.1):
-  1. Dashboard → Tax → Get started → automatic tax 활성화.
-  2. Stripe Checkout `tax_behavior: 'exclusive'` 설정 (코드 1줄 추가).
-  3. `scripts/seed-stripe.ts`에 `tax_code: 'txcd_10103000'` (SaaS 기준) 추가 + 재실행.
-  4. Pricing 페이지에 "Taxes calculated at checkout" 카피 추가 (frontend).
-- 자세한 결정 근거: `_workspace/01_architecture.md §0` 변경 메모, spec/06 §5 `[TBD]` 4번 항목.
+### 4.4 VAT/GST/Sales Tax — **Dodo MoR로 자동 처리 (완료)**
+
+- **상태**: Dodo Payments가 **Merchant of Record**이므로 VAT/GST/Sales Tax 계산·징수·송금을 모두 Dodo가 자동 처리. 별도 활성화·등록·코드 변경 불필요.
+- **사용자 경험**: Hosted Checkout 페이지에서 결제자의 국가에 따라 Dodo가 자동으로 세금을 노출 (또는 가격에 포함). Pricing 페이지에서 "Taxes calculated at checkout" 카피 1줄만 표기.
+- **운영 영향**: Stripe Tax 활성화처럼 거래액 0.5% 추가 수수료/세무 등록/연 매출 임계치 모니터링이 없음. 이전 spec/06 TD-7 (Stripe Tax 활성화) 항목은 본 PIVOT-01로 **종결**.
+- **참조**: `_workspace/00_input.md §11.4`, `_workspace/01_architecture.md §0` 변경 메모, spec/06 §1 TD-7.
 
 ---
 
@@ -304,15 +300,16 @@ git push -u origin feat/initial-deploy
 # Vercel CLI로 production env 인벤토리 확인
 vercel env ls production
 
-# 다음 17개가 모두 존재해야 함 (KV 자동주입 4개 포함)
+# 다음 16개가 모두 존재해야 함 (KV 자동주입 4개 포함)
 # NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
-# NEXT_PUBLIC_APP_URL, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
-# NEXT_PUBLIC_STRIPE_PRICE_SINGLE/WEEKLY/MONTHLY,
+# NEXT_PUBLIC_APP_URL,
+# NEXT_PUBLIC_DODO_PRODUCT_SINGLE/WEEKLY/MONTHLY,
 # NEXT_PUBLIC_SENTRY_DSN (empty OK at MVP),
 # SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY,
-# STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
+# DODO_API_KEY, DODO_WEBHOOK_SECRET,
 # KV_URL, KV_REST_API_URL, KV_REST_API_TOKEN, KV_REST_API_READ_ONLY_TOKEN,
 # SENTRY_DSN (empty OK), SYSTEM_PROMPT_VERSION
+# 변경 (rev 2): NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY 삭제 (Dodo는 publishable key 불필요)
 ```
 
 ### 5.3 Smoke Test 체크리스트 (Day 14 launch 전 필수)
@@ -325,12 +322,12 @@ vercel env ls production
 | 4 | `/onboarding`에서 이력서 paste → Extract → 4 필드 prefill → Save | `users_profile` row upsert 성공 | Supabase Data Browser |
 | 5 | `/dashboard`에서 골든 픽스처(`tests/fixtures/upwork-sample.txt`) paste → Analyze | 6초 이내 SAFE/WARNING/DANGER + match_score 표시, 크레딧 잔여 2 | Browser + Vercel Logs |
 | 6 | `analyses` row insert 확인 + `credit_ledger`에 `consume -1, balance_after=2` row | row 각 1개 | Supabase SQL Editor |
-| 7 | Pricing → "Buy single $0.99" → Stripe Checkout → test card `4242 4242 4242 4242` 결제 | `/dashboard?status=success`로 redirect, 크레딧 +1 = 3 | Browser + Stripe Dashboard |
-| 8 | `stripe_events` table에 event row + `processed=true` | row 1개 | Supabase SQL Editor |
-| 9 | Stripe Dashboard에서 해당 charge `[Refund]` (full refund) → 30초 대기 | `credit_ledger`에 `refund_reversal -1, balance_after=2` row | Supabase + Browser dashboard |
+| 7 | Pricing → "Buy single $0.99" → Dodo Hosted Checkout → test card (`[TBD: confirm Dodo test card — likely 4242 4242 4242 4242 standard sandbox]`) 결제 | `/dashboard?status=success`로 redirect, 크레딧 +1 = 3 | Browser + Dodo Dashboard |
+| 8 | `dodo_events` table에 event row + `processed=true` (PK = Standard Webhooks `webhook-id`) | row 1개 | Supabase SQL Editor |
+| 9 | Dodo Dashboard에서 해당 결제 `[Refund]` (full refund) → 30초 대기 → `refund.succeeded` webhook | `credit_ledger`에 `refund_reversal -1, balance_after=2` row | Supabase + Browser dashboard |
 | 10 | 두 번째 Google 계정으로 로그인 후 첫 계정의 `/analyses/<id>` URL 접근 | 404 (RLS 차단) | Browser |
 | 11 | Rate limit: `/api/analyze` 60회 1분 내 호출 | 61번째 요청 429 `ERR_RATE_LIMITED` | curl + Vercel KV Inspector |
-| 12 | OpenAI key 일시 무효화 후 Analyze 시도 | 3회 retry 후 502 `ERR_OPENAI_UPSTREAM` + 크레딧 차감 0 | Vercel Logs + Supabase (no consume row) |
+| 12 | OpenAI key 일시 무효화 후 Analyze 시도 | 3회 retry 후 502 `ERR_LLM_UPSTREAM` (별명 `ERR_OPENAI_UPSTREAM`) + 크레딧 차감 0 | Vercel Logs + Supabase (no consume row) |
 
 12개 모두 통과 시 launch GO. 1개라도 실패 시 launch HOLD + 원인 fix → 본 체크리스트 처음부터.
 
@@ -345,20 +342,20 @@ vercel env ls production
 | 앱 로그 | **Vercel Logs** (Dashboard → Logs) | Runtime errors, slow functions (>3s), 429/5xx 비율 | 일 1회 / 알람 즉시 |
 | DB | **Supabase Logs** (Dashboard → Logs) | Auth 실패, RLS 위반 시도, slow queries (>500ms), connection pool 사용률 | 일 1회 |
 | Auth | Supabase Dashboard → Authentication → Users | 신규 가입자 수, 로그인 실패율 | 일 1회 |
-| 결제 | **Stripe Dashboard** | 매출, 환불, 실패 결제, webhook 실패 | 일 1회 |
+| 결제 | **Dodo Dashboard** | 매출, 환불, 실패 결제, webhook 실패 | 일 1회 |
 | KV 사용량 | Vercel Storage → KV → Metrics | commands/day (Hobby 30K limit), latency | 주 1회 |
 | OpenAI 비용 | platform.openai.com → Usage | tokens/day, USD/day | 일 1회 (§6.3 알람) |
 
 ### 6.2 Sentry — **MVP는 미도입, v1.0 진입(Week 3) 시 도입**
 
 - **이유**: MVP DAU < 50 추정 → Vercel Logs로 충분. Sentry 추가 시 init/setup 0.5일 + breadcrumb 코드 작성 1일 추가 부담.
-- **트리거 조건**: **MVP launch 후 7일 모니터링 중 `ERR_OPENAI_UPSTREAM` 발생 또는 5xx 비율 > 0.5%** 도달 시. spec/06 TD-5와 일치.
+- **트리거 조건**: **MVP launch 후 7일 모니터링 중 `ERR_LLM_UPSTREAM` 발생 또는 5xx 비율 > 0.5%** 도달 시. spec/06 TD-5와 일치.
 - **도입 시 절차** (v1.0 Week 3, 약 2시간):
   1. https://sentry.io → Create project → Next.js → DSN 복사.
   2. `pnpm add @sentry/nextjs` → `pnpm dlx @sentry/wizard@latest -i nextjs` (자동 instrumentation.ts/sentry.client.config.ts 생성).
   3. Vercel env `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN`에 동일 값 등록.
   4. `_workspace/01_architecture.md §8.1` Silent Retry breadcrumb 코드 활성화 (이미 lib/openai/client.ts에 작성됨).
-  5. Sentry → Alerts → Create alert: `ERR_OPENAI_UPSTREAM` 10건/1h 임계 → 이메일.
+  5. Sentry → Alerts → Create alert: `ERR_LLM_UPSTREAM` 10건/1h 임계 → 이메일.
 - Free tier (5K errors/month, 1 user)로 시작 충분. DAU > 500 시 Team plan($26/mo) 검토.
 
 ### 6.3 OpenAI 비용 알람 — **MVP에서 즉시 설정**
@@ -392,7 +389,7 @@ OpenAI Dashboard → **Settings** → **Limits** → **Usage limits**:
       ORDER BY user_id, created_at DESC
    ) t;
    ```
-5. **Stripe Dashboard** → 직전 24h 신규 매출 + 환불 카운트. 환불 발생 시 webhook이 `credit_ledger`에 `refund_reversal` 기록했는지 cross-check.
+5. **Dodo Dashboard** → 직전 24h 신규 매출 + 환불 카운트. 환불 발생 시 `refund.succeeded` webhook이 `credit_ledger`에 `refund_reversal` 기록했는지 cross-check.
 
 ### 6.5 알람 임계 (MVP)
 
@@ -400,7 +397,7 @@ OpenAI Dashboard → **Settings** → **Limits** → **Usage limits**:
 |------|------|------|------|
 | OpenAI hard limit 90% | $180/mo | OpenAI email | 코드 리뷰: 무한 retry 루프? Pricing 조정? |
 | Vercel build 실패 | 1건 | GitHub Actions PR check | 즉시 fix or revert |
-| Stripe webhook 실패 (Dashboard 알람) | 1건 | Stripe email | endpoint URL/secret 확인. signature 실패는 §4.3 검증 재실행 |
+| Dodo webhook 실패 (Dashboard 알람) | 1건 | Dodo email | endpoint URL/secret 확인. signature 실패는 §4.3 검증 재실행 |
 | Supabase egress > 5GB/일 | (Pro tier 진입) | Supabase email | abuse user 확인. 1 user에 분석 1만건? |
 
 ---
@@ -431,13 +428,13 @@ psql "$SUPABASE_DB_URL" -c "DROP FUNCTION IF EXISTS public.record_analysis_and_d
 
 **원칙**: `analyses`/`credit_ledger`/`subscriptions` 등 사용자 데이터를 가진 테이블의 DROP은 **절대 금지**. 데이터 손상 위험 시 read-only 모드(`/api/analyze` 차단)로 전환 후 forward-fix migration 작성.
 
-### 7.3 Stripe Webhook 일시 비활성
+### 7.3 Dodo Webhook 일시 비활성
 
 결제 동기화 버그 시 추가 row insert를 막아 데이터 오염 차단.
 
-1. Stripe Dashboard → Developers → Webhooks → endpoint 선택 → **Disable**.
-2. 비활성 동안 발생한 이벤트는 Stripe가 최대 3일 자동 재시도 (event id 동일) → 멱등성 보장(`stripe_events` PK) 으로 안전.
-3. 코드 fix 후 endpoint **Enable** → 자동 재시도 큐 소진까지 약 5분.
+1. Dodo Dashboard → Developers → Webhooks → endpoint 선택 → **Disable** (`[TBD: confirm UI path with Dodo docs]`).
+2. 비활성 동안 발생한 이벤트는 Dodo가 자동 재시도 (`webhook-id` 헤더가 동일하게 유지됨 — 정확한 재시도 윈도우/policy는 `[TBD: confirm Dodo retry policy]`) → 멱등성 보장(`dodo_events` PK) 으로 안전.
+3. 코드 fix 후 endpoint **Enable** → 자동 재시도 큐 소진까지 약 5분 (가정).
 
 ### 7.4 OpenAI 키 회전 (유출 의심 시)
 
@@ -457,7 +454,7 @@ psql "$SUPABASE_DB_URL" -c "DROP FUNCTION IF EXISTS public.record_analysis_and_d
 | **Supabase SMTP** | (Supabase Free에 포함) | 별도 SMTP provider 필요 | 사용자 수동 | ★★★ — Auth 메일(가입/비번 리셋) 전용 권장. Transactional은 부적합 | Auth 메일은 사용, 트랜잭셔널은 분리 |
 | **Postmark** | 100/mo free | 5분 | 자동 | ★★★★ — 트랜잭셔널 deliverability 1위 | 도메인 신뢰도 1위지만 무료 한도 작음 |
 
-**결정 시점**: **v1.0 진입(Week 3 Day 1)**, 트리거는 "결제 영수증 첫 발송 필요 시" — Stripe Checkout에 receipt 옵션이 내장되어 있어 MVP는 Stripe receipt만으로 운영 가능. ConnectSaver 자체 알림(주간 무제한 만료, 환불 완료, 사용량 80% 도달 등)이 필요해지는 v1.0 시점이 도입 적기.
+**결정 시점**: **v1.0 진입(Week 3 Day 1)**, 트리거는 "결제 영수증 첫 발송 필요 시" — Dodo Hosted Checkout에 receipt 옵션이 내장되어 있어 (`[TBD: confirm Dodo receipt behavior]`) MVP는 Dodo receipt만으로 운영 가능. ConnectSaver 자체 알림(주간 무제한 만료, 환불 완료, 사용량 80% 도달 등)이 필요해지는 v1.0 시점이 도입 적기.
 
 **제안 default**: **Resend** — Next.js + React Email 조합으로 1일 이내 통합. 도메인은 Cloudflare에서 `mail.connectsaver.com` subdomain 발급 후 Resend DKIM/SPF/Return-Path 자동 설정.
 
@@ -473,14 +470,15 @@ EMAIL_FROM_DEFAULT="ConnectSaver <noreply@connectsaver.com>"
 
 ### 9.1 Secrets 관리
 
-- [ ] Vercel env 등록 시 **"Sensitive"** 토글 ON 확인 (특히 `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`). Sensitive ON 시 일단 저장되면 dashboard에서 다시 볼 수 없고, 빌드 로그에도 자동 마스킹.
+- [ ] Vercel env 등록 시 **"Sensitive"** 토글 ON 확인 (특히 `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, `DODO_API_KEY`, `DODO_WEBHOOK_SECRET`). Sensitive ON 시 일단 저장되면 dashboard에서 다시 볼 수 없고, 빌드 로그에도 자동 마스킹.
 - [ ] `.env*` 파일이 `.gitignore`에 포함 — 본 가이드 §gitignore 참조. 단 `.env.example`은 추적.
-- [ ] GitHub repo에 `git log --all -p | grep -E "(sk_live_|sk_test_|whsec_|sbp_|eyJ)"` — 시크릿 누출 grep. 발견 시 즉시 회전 + `git filter-repo`.
+- [ ] GitHub repo에 `git log --all -p | grep -E "(dodo_live_|dodo_test_|DODO_API_KEY|DODO_WEBHOOK_SECRET|sbp_|eyJ)"` — 시크릿 누출 grep. 발견 시 즉시 회전 + `git filter-repo`. (rev 2 — 구 Stripe 패턴 `sk_live_|sk_test_|whsec_`는 제거.)
 - [ ] `SUPABASE_SERVICE_ROLE_KEY`는 **server-only 파일 (`lib/supabase/admin.ts`)에서만 import**. `'use client'` 컴포넌트나 RSC가 아닌 client component에서 import 시 빌드 실패 강제 (Next.js가 자동 차단하지만 PR 리뷰에서 cross-check).
 
-### 9.2 Stripe Webhook signature 의무화
+### 9.2 Dodo Webhook signature 의무화 (Standard Webhooks)
 
-- [ ] `/api/webhooks/stripe/route.ts` 첫 줄에 `stripe.webhooks.constructEvent(rawBody, sig, STRIPE_WEBHOOK_SECRET)` 호출. 실패 시 400. `_workspace/01_architecture.md §8.4` 그대로.
+- [ ] `/api/webhooks/dodo/route.ts` 첫 줄에 `standardwebhooks` npm의 `Webhook.verify(rawBody, headers)` 호출. 헤더 3종 (`webhook-id` / `webhook-timestamp` / `webhook-signature`) HMAC-SHA256 검증. 실패 시 400. `_workspace/01_architecture.md §8.4` 그대로.
+- [ ] **자체 HMAC 구현 금지** — Standard Webhooks 스펙은 `${webhook-id}.${webhook-timestamp}.${body}` 페이로드를 서명하므로 timing-safe compare/Base64 디코딩/replay window를 모두 올바르게 처리해야 한다. `standardwebhooks` npm 라이브러리 사용 강력 권장 (보안 권고: SEC-6 — `_workspace/06_review_report.md §2` 참조).
 - [ ] Next.js Route Handler에서 raw body 보존을 위해 `req.text()` 사용. **`req.json()` 절대 금지** (JSON parse가 byte sequence를 변형하여 signature 깨짐).
 - [ ] §4.3 음수 테스트(서명 없는 POST → 400) 배포 직후 1회 실행 확인.
 
@@ -495,7 +493,7 @@ EMAIL_FROM_DEFAULT="ConnectSaver <noreply@connectsaver.com>"
 
 - [ ] Vercel은 자동 HTTPS 강제 (HTTP → 301). HSTS 헤더 자동.
 - [ ] `next.config.ts`에 CSP/X-Frame-Options 헤더 추가는 v1.0 항목 — MVP는 Vercel 기본 + Supabase가 자체 CORS 관리하므로 충분.
-- [ ] CORS: `/api/*`는 same-origin이므로 Next.js 기본 (no CORS header) OK. 단 `/api/webhooks/stripe`는 Stripe IP에서 호출 — Next.js Route Handler가 origin 무관하게 처리하므로 추가 설정 불필요.
+- [ ] CORS: `/api/*`는 same-origin이므로 Next.js 기본 (no CORS header) OK. 단 `/api/webhooks/dodo`는 Dodo IP에서 호출 — Next.js Route Handler가 origin 무관하게 처리하므로 추가 설정 불필요.
 
 ### 9.5 Rate Limiting / Cost Guards
 
@@ -562,7 +560,7 @@ graph TB
 
   subgraph SaaS["3rd-party SaaS"]
     OAI["OpenAI<br/>(gpt-4o-mini)"]
-    ST["Stripe<br/>(Checkout + Webhooks)"]
+    DP["Dodo Payments<br/>(Hosted Checkout + Standard Webhooks, MoR)"]
     SEN["Sentry<br/>(deferred v1.0)"]
     RES["Resend<br/>(deferred v1.0 Wk3)"]
   end
@@ -577,8 +575,8 @@ graph TB
   API --> KV
   API --> PG
   API --> OAI
-  API --> ST
-  ST -->|signed webhook| API
+  API --> DP
+  DP -->|signed webhook<br/>(Standard Webhooks)| API
   API -.->|v1.0+| SEN
   API -.->|v1.0 Wk3+| RES
 ```
@@ -596,29 +594,30 @@ cd /Users/heesubkim/project/bidvett && pnpm install
 # 2) 환경변수 템플릿 복사
 cp .env.example .env.local
 # .env.local 열어 실제 값 채우기 (최소 NEXT_PUBLIC_SUPABASE_URL/ANON_KEY,
-# OPENAI_API_KEY, STRIPE_SECRET_KEY/PUBLISHABLE_KEY는 필수)
+# OPENAI_API_KEY, DODO_API_KEY는 필수)
 
 # 3) Supabase 마이그레이션 (local 또는 dev 프로젝트 대상 — §2.3)
 pnpm dlx supabase db push
 
-# 4) Stripe Product/Price seed (1회)
-pnpm dlx tsx scripts/seed-stripe.ts
-# 출력된 price_* ID를 .env.local NEXT_PUBLIC_STRIPE_PRICE_* 에 채워넣기
+# 4) Dodo Payments Product 등록 (Dashboard 수동 권장 — §4.1)
+#    또는 SDK 스크립트 (의사 시그니처):
+#    DODO_API_KEY=<test-key> pnpm dlx tsx scripts/seed-dodo.ts
+# Product ID 3개를 복사하여 .env.local NEXT_PUBLIC_DODO_PRODUCT_SINGLE/WEEKLY/MONTHLY 에 채워넣기
 
 # 5) Dev 서버
 pnpm dev
 # http://localhost:3000
 ```
 
-**Stripe Webhook 로컬 테스트** (선택):
+**Dodo Webhook 로컬 테스트** (선택):
 
 ```bash
-# 별도 터미널
-pnpm dlx stripe listen --forward-to http://localhost:3000/api/webhooks/stripe
-# 출력된 whsec_... 을 .env.local STRIPE_WEBHOOK_SECRET 에 임시 설정 후 dev 서버 재기동
+# 별도 터미널 — Dodo CLI 또는 ngrok 등으로 webhook 포워딩 (`[TBD: confirm Dodo CLI tooling availability]`)
+# 예: ngrok http 3000 → 발급된 https URL을 Dodo Dashboard webhook endpoint에 임시 등록
+# Dodo Dashboard webhook signing secret을 .env.local DODO_WEBHOOK_SECRET 에 설정 후 dev 서버 재기동
 ```
 
-테스트 카드: `4242 4242 4242 4242` (모든 만료/CVC), 환불 시뮬레이션은 Stripe Dashboard → test 결제 → Refund 버튼.
+테스트 카드: `[TBD: confirm Dodo test card — likely 4242 4242 4242 4242 standard sandbox]` (모든 만료/CVC). 환불 시뮬레이션은 Dodo Dashboard → test 결제 → Refund 버튼.
 
 ---
 
@@ -626,14 +625,16 @@ pnpm dlx stripe listen --forward-to http://localhost:3000/api/webhooks/stripe
 
 | # | 결정 | 상태 | 트리거 조건 |
 |---|------|------|-----------|
-| D1 | **Sentry 도입** | MVP 미도입 | launch 후 7일 ERR_OPENAI_UPSTREAM 발생 OR 5xx > 0.5% → v1.0 Week 3 |
+| D1 | **Sentry 도입** | MVP 미도입 | launch 후 7일 ERR_LLM_UPSTREAM 발생 OR 5xx > 0.5% → v1.0 Week 3 |
 | D2 | **Email 알림 채널** (Resend 권장) | MVP 미도입 | 결제/만료 알림 사용자 요청 OR v1.0 Week 3 도달 |
-| D3 | **Stripe Tax** | OFF | EU 결제 5건 OR US 매출 $20K 근접 → v1.1 |
+| D3 | ~~**Stripe Tax**~~ → **Dodo Payments MoR로 자동 처리됨** | (완료, PIVOT-01) | — |
 | D4 | **Custom domain** | Vercel 기본 도메인 사용 가능 | launch 직전 (Day 14) 선택 사항 |
 | D5 | **GDPR Data Export/Delete** | placeholder 라우트만 | v1.1 |
 | D6 | **CSP/보안 헤더 강화** | Vercel 기본 + HSTS만 | v1.0 — `next.config.ts` headers() 추가 |
 | D7 | **Vercel Pro plan** | Hobby tier | DAU > 100 OR bandwidth > 100GB/mo |
 | D8 | **Vercel KV 유료 전환** | Hobby (30K cmd/day) | DAU > 200 (spec/06 TD-6) |
+| D9 | **Dodo Customer Portal URL** | `[TBD]` — Dodo가 self-service portal 제공 시 `/account` Billing 탭에서 deep-link | 사용자 self-service 구독 취소 요청 누적 시 또는 v1.0 Week 3 |
+| D10 | **Dodo test/live 키 prefix·전환 절차** | `[TBD]` — 정확한 키 형식과 UI 경로 미확정 | Day 7 (production deploy 직전) 확정 |
 
 ---
 
@@ -655,9 +656,11 @@ supabase db diff                 # 로컬 vs 원격 차이
 supabase functions deploy        # (사용 안함 — Next.js Route Handlers로 통일)
 supabase gen types typescript --local > src/lib/types/db.ts  # 타입 생성
 
-# Stripe
-stripe listen --forward-to http://localhost:3000/api/webhooks/stripe
-stripe trigger checkout.session.completed   # 임의 이벤트 발화
+# Dodo Payments — Dashboard "Send test webhook" UI 또는 (가용 시) Dodo CLI
+# `[TBD: confirm Dodo CLI commands with Dodo docs]`
+# 예시 (의사):
+# dodo listen --forward-to http://localhost:3000/api/webhooks/dodo
+# dodo trigger payment.succeeded
 ```
 
 ### 14.2 트러블슈팅 빠른 인덱스
@@ -665,8 +668,8 @@ stripe trigger checkout.session.completed   # 임의 이벤트 발화
 | 증상 | 진단 | 해결 |
 |------|------|------|
 | OAuth redirect 후 404/500 | Google Cloud Console Redirect URI ≠ Supabase Site URL | §2.2 4번, §3.4 4번 재확인 |
-| `/api/analyze` 502 ERR_OPENAI_UPSTREAM 연발 | OpenAI key 무효 / quota 초과 | platform.openai.com → Usage / Limits 확인 |
-| Webhook 400 ERR_WEBHOOK_SIGNATURE | `STRIPE_WEBHOOK_SECRET` mismatch (test↔live 혼동) | §4.2 4번 secret 재확인 + Vercel redeploy |
+| `/api/analyze` 502 ERR_LLM_UPSTREAM 연발 | OpenAI key 무효 / quota 초과 | platform.openai.com → Usage / Limits 확인 |
+| Webhook 400 ERR_WEBHOOK_SIGNATURE | `DODO_WEBHOOK_SECRET` mismatch (test↔live 혼동) OR Standard Webhooks 헤더 누락 (`webhook-id` / `webhook-timestamp` / `webhook-signature`) | §4.2 4번 secret 재확인 + Vercel redeploy. `standardwebhooks` npm 버전 확인 |
 | RLS로 본인 데이터도 안 보임 | `@supabase/ssr` cookie 세션 만료 | `/login` 재진입 (logout 안 해도 OK) |
 | KV 429 (`Daily commands exceeded`) | Hobby 30K cmd/day 초과 | Vercel Storage → Upgrade (TD-6 트리거) |
 | Vercel build fail "Missing env" | NEXT_PUBLIC_ 변수 미등록 | Settings → Env → 환경별 등록 + Redeploy |

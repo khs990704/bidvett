@@ -9,7 +9,7 @@ ALTER TABLE public.credit_ledger  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.subscriptions  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.analyses       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_prompts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.stripe_events  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.dodo_events  ENABLE ROW LEVEL SECURITY;
 
 -- ====================================================================
 -- users_profile — own SELECT/INSERT/UPDATE
@@ -52,7 +52,7 @@ CREATE POLICY analyses_update_report_own ON public.analyses
   FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- ====================================================================
--- system_prompts & stripe_events — no policy => deny all for anon/auth.
+-- system_prompts & dodo_events — no policy => deny all for anon/auth.
 -- service_role bypasses RLS. Supabase Data Browser is service_role.
 -- ====================================================================
 -- Intentionally no policies.

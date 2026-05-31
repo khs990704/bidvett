@@ -1,7 +1,8 @@
 # 02_api_spec.md — ConnectSaver API 명세 확정본
 
+> [PIVOT-01 rev2 — 2026-05-29] 결제 인프라 Stripe → Dodo Payments. §2 webhook path, §3.7 checkout, §3.8 webhook full rewrite, §4 에러 코드(`ERR_DODO_UPSTREAM`)를 갱신. 결정 매트릭스는 `_workspace/00_input.md §11`.
 > 상위 문서: `_workspace/00_input.md`, `_workspace/01_architecture.md`
-> 초안 출처: `spec/03_api_preview.md` (🔒 FROZEN 2026-05-27)
+> 초안 출처: `spec/03_api_preview.md` (🔒 FROZEN-rev2 2026-05-29)
 > `analyze.v1` 본문은 spec/03 §7 그대로 (재작성 금지). 본 문서 §8에 `profile_extract.v1` 본문을 새로 확정.
 
 ---
@@ -15,7 +16,7 @@
 | **인증 방식** | Supabase JWT (`Authorization: Bearer <access_token>`) 또는 `@supabase/ssr` cookie 세션 |
 | **응답 형식** | `application/json; charset=utf-8` |
 | **시간 표기** | ISO 8601 UTC (예: `2026-05-27T11:24:01Z`) |
-| **금액 단위** | USD, 정수 cents (Stripe convention) |
+| **금액 단위** | USD, 정수 cents |
 | **언어** | 영어 단일 (Q5) — 모든 사용자 대면 메시지 |
 
 ## 2. 엔드포인트 목록 (9개 + 1 webhook)
@@ -30,8 +31,8 @@
 | 6 | GET | `/api/analyses` | Required | per-IP 120/min | n/a |
 | 6b | GET | `/api/analyses/[id]` | Required | per-IP 120/min | n/a |
 | 7 | GET | `/api/credits` | Required | per-IP 120/min | n/a |
-| 8 | POST | `/api/checkout` | Required | per-user 10/min | `Idempotency-Key` 헤더 허용 (Stripe SDK 전달) |
-| 9 | POST | `/api/webhooks/stripe` | Stripe signature | (Stripe 자체 재시도) | `stripe_events` PK 유니크 (`event.id`) |
+| 8 | POST | `/api/checkout` | Required | per-user 10/min | `Idempotency-Key` 헤더 허용 (Dodo SDK 전달, 의사 시그니처 — `// [TBD: confirm exact Dodo Payments SDK signature]`) |
+| 9 | POST | `/api/webhooks/dodo` | Standard Webhooks signature | (Dodo 자체 재시도) | `dodo_events` PK 유니크 (Standard Webhooks `webhook-id` 헤더 값) |
 | 10 | POST | `/api/report-scam` | Required | per-user 30/min | analysis_id별 1회 (DB unique constraint X, 앱 단언) |
 
 ---
@@ -274,6 +275,7 @@ z.object({
 | 422 | `ERR_VALIDATION` | LLM 출력 Structured Outputs 검증 실패 |
 | 429 | `ERR_RATE_LIMITED` | per-user 60/min OR per-IP 120/min OR 동시 lock OR daily safety cap |
 | 502 | `ERR_LLM_UPSTREAM` | Silent Retry ×3 실패. **0 차감** |
+| 502 | `ERR_DODO_UPSTREAM` | Dodo Payments SDK 호출 실패 (checkoutSessions.create 등) |
 | 500 | `ERR_INTERNAL` | 미분류 (DB 저장 실패 등) |
 
 **Internal sequence** (pseudo):
@@ -411,31 +413,51 @@ z.object({
 **Response 200**:
 ```json
 {
-  "checkout_url": "https://checkout.stripe.com/c/pay/cs_test_...",
-  "session_id": "cs_test_..."
+  "checkout_url": "https://checkout.dodopayments.com/<session-id>",
+  "session_id": "<dodo-checkout-session-id>"
 }
 ```
 
-**Errors**: `400 ERR_BAD_REQUEST`, `401`, `429 ERR_RATE_LIMITED`, `502 ERR_STRIPE_UPSTREAM`.
+**Errors**: `400 ERR_BAD_REQUEST`, `401`, `429 ERR_RATE_LIMITED`, `502 ERR_DODO_UPSTREAM`.
 
-**Internal sequence**:
-1. Map `plan` → `STRIPE_PRICE_*` ID
-2. `stripe.checkout.sessions.create({ mode: plan==='monthly_sub'?'subscription':'payment', line_items, success_url, cancel_url, client_reference_id: user.id, metadata: { user_id, plan } })`
-3. `Idempotency-Key` 헤더 → Stripe SDK에 그대로 전달
+**Internal sequence** (의사 시그니처 — `// [TBD: confirm exact Dodo Payments SDK signature]`):
+```ts
+// import Dodo from 'dodopayments';
+// const dodo = new Dodo({ apiKey: process.env.DODO_API_KEY! });
+const session = await dodo.checkoutSessions.create({  // [TBD: confirm exact Dodo Payments SDK signature]
+  productId: PLAN_TO_DODO_PRODUCT_ID[plan],
+  mode: plan === 'monthly_sub' ? 'subscription' : 'payment',  // [TBD: confirm field name with Dodo docs]
+  successUrl: `${appUrl}/dashboard?status=success`,
+  cancelUrl: `${appUrl}/pricing?status=cancel`,
+  customerReferenceId: user.id,
+  metadata: { user_id: user.id, plan },
+});
+return { checkout_url: session.url, session_id: session.id };
+```
 
-**Plan ↔ Stripe Price 매핑**:
-| `plan` | mode | Price 환경변수 | 가격 |
-|--------|------|---------------|------|
-| `credit_single` | `payment` | `NEXT_PUBLIC_STRIPE_PRICE_SINGLE` | $0.99 |
-| `weekly_pass` | `payment` | `NEXT_PUBLIC_STRIPE_PRICE_WEEKLY` | $4.99 |
-| `monthly_sub` | `subscription` | `NEXT_PUBLIC_STRIPE_PRICE_MONTHLY` | $19/month |
+1. Map `plan` → `NEXT_PUBLIC_DODO_PRODUCT_*` ID
+2. `dodo.checkoutSessions.create({...})` (Dodo SDK 의사 시그니처)
+3. `Idempotency-Key` 헤더 → Dodo SDK에 그대로 전달 (지원 가정 — `// [TBD: confirm idempotency key header name with Dodo docs]`)
+
+**Plan ↔ Dodo Product 매핑**:
+| `plan` | mode | Product 환경변수 | 가격 |
+|--------|------|------------------|------|
+| `credit_single` | `payment` (one-time) | `NEXT_PUBLIC_DODO_PRODUCT_SINGLE` | $0.99 |
+| `weekly_pass` | `payment` (one-time) | `NEXT_PUBLIC_DODO_PRODUCT_WEEKLY` | $4.99 |
+| `monthly_sub` | `subscription` | `NEXT_PUBLIC_DODO_PRODUCT_MONTHLY` | $19/month |
+
+> **세금 처리**: Dodo Payments가 Merchant of Record로 VAT/GST/Sales Tax를 자동 계산해 가격에 합산하거나 별도 표시. 코드/명세 측에서 별도 처리 불필요.
 
 ---
 
-### 3.9 POST `/api/webhooks/stripe`
+### 3.9 POST `/api/webhooks/dodo`
 
-**Header**: `Stripe-Signature: t=...,v1=...`
-**Body**: raw bytes (no JSON parse before signature verification)
+**Headers** (Standard Webhooks 스펙):
+- `webhook-id`: 고유 이벤트 식별자 (멱등성 키 — `dodo_events.id`로 그대로 저장)
+- `webhook-timestamp`: Unix epoch seconds
+- `webhook-signature`: `v1,<base64(HMAC-SHA256(${webhook-id}.${webhook-timestamp}.${rawBody}, DODO_WEBHOOK_SECRET))>`
+
+**Body**: raw bytes (no JSON parse before signature verification — `req.text()` 사용 필수)
 
 **Response 200**:
 ```json
@@ -451,21 +473,48 @@ z.object({
 
 | Event | Action |
 |-------|--------|
-| `checkout.session.completed` | metadata.plan === 'credit_single' → `credit_ledger` insert(+1, type='purchase_single'). 'weekly_pass' → `subscriptions` insert(plan='weekly_pass', period_end=now+7d, soft_cap=100). 'monthly_sub' → `subscriptions` insert(plan='monthly_sub', period_end=now+30d, soft_cap=500) |
-| `invoice.paid` | monthly_sub 갱신: `subscriptions.period_end = period_end + 30d`, `usage_count = 0` |
-| `customer.subscription.deleted` | `subscriptions.status='canceled'` (period_end은 보존) |
-| `charge.refunded` | (1) charge.metadata로 원 결제 식별 (2) 0회 사용 + 7일 이내 검증 (3) `credit_ledger` insert(type='refund_reversal', delta=원 결제의 +N의 negative) (4) subscription이었으면 `status='refunded'` |
+| `payment.succeeded` | one-time 결제. metadata.plan === 'credit_single' → `credit_ledger` insert(+1, type='purchase_single', dodo_event_id=webhook-id). 'weekly_pass' → `subscriptions` insert(plan='weekly_pass', period_end=now+7d, soft_cap=100, dodo_event_id=webhook-id) |
+| `subscription.active` | 신규 monthly_sub 활성화 — `subscriptions` insert(plan='monthly_sub', status='active', period_end=now+30d, soft_cap=500, dodo_subscription_id=<from payload>) |
+| `subscription.renewed` | 구 `invoice.paid` 흡수. monthly_sub 갱신: `subscriptions.period_end = period_end + 30d`, `usage_count = 0` |
+| `subscription.cancelled` | `subscriptions.status='canceled'` (period_end은 보존) |
+| `refund.succeeded` | (1) payload의 원 결제 식별 (metadata.user_id 또는 dodo_payment_id) (2) 0회 사용 + 7일 이내 검증 (3) `credit_ledger` insert(type='refund_reversal', delta=원 결제의 +N의 negative) (4) subscription이었으면 `status='refunded'` |
 
-**Internal sequence**:
+**Internal sequence** (의사 시그니처 — `// [TBD: confirm exact Dodo Payments SDK signature]`):
+```ts
+// import { Webhook } from 'standardwebhooks';
+const wh = new Webhook(process.env.DODO_WEBHOOK_SECRET!);
+
+const rawBody = await req.text();
+let event;
+try {
+  event = wh.verify(rawBody, {
+    'webhook-id': req.headers.get('webhook-id')!,
+    'webhook-timestamp': req.headers.get('webhook-timestamp')!,
+    'webhook-signature': req.headers.get('webhook-signature')!,
+  });
+} catch (e) {
+  return apiError(400, 'ERR_WEBHOOK_SIGNATURE');
+}
+
+const webhookId = req.headers.get('webhook-id')!;
+await supabaseAdmin.from('dodo_events').insert(
+  { id: webhookId, type: event.type, payload: event },
+  { onConflict: 'id', ignoreDuplicates: true }
+);
+// 충돌 시 processed=true면 200 즉시 반환 (멱등성)
+```
+
 1. `req.text()` → rawBody
-2. `event = stripe.webhooks.constructEvent(rawBody, sig, STRIPE_WEBHOOK_SECRET)` — 실패 시 400
-3. `supabaseAdmin.from('stripe_events').insert({ id: event.id, type: event.type, payload: event }, { onConflict: 'id', ignoreDuplicates: true })`
+2. Standard Webhooks verify (`standardwebhooks` npm) — 실패 시 400 `ERR_WEBHOOK_SIGNATURE`
+3. `supabaseAdmin.from('dodo_events').insert({ id: webhook-id, type, payload }, { onConflict: 'id', ignoreDuplicates: true })`
 4. 충돌 시 (이미 processed=true) → `200 {received:true}` 즉시 반환 (멱등성)
 5. 이벤트 type별 핸들러 실행
-6. `update stripe_events set processed=true, processed_at=now() where id=event.id`
+6. `update dodo_events set processed=true, processed_at=now() where id=webhook-id`
 7. `200 {received:true}`
 
-**환불 안전성**: `charge.refunded` 핸들러는 Stripe Dashboard에서 환불 클릭 시 자동 발생. 7일 초과 또는 사용이력 발견 시에도 환불은 **이미 Stripe에서 완료**된 상태 — 운영자 책임으로 간주하고 DB 처리는 그대로 수행 (`credit_ledger` 음수 row). Sentry에 warning 캡처.
+**환불 안전성**: `refund.succeeded` 핸들러는 Dodo Dashboard에서 환불 클릭 시 자동 발생. 7일 초과 또는 사용이력 발견 시에도 환불은 **이미 Dodo Payments에서 완료**된 상태 — 운영자 책임으로 간주하고 DB 처리는 그대로 수행 (`credit_ledger` 음수 row). Sentry에 warning 캡처.
+
+> **보안 권고**: Standard Webhooks signature는 timing-safe compare + replay window(timestamp staleness) 처리가 까다롭다. `standardwebhooks` npm 라이브러리 사용 강력 권장 — 자체 구현은 timing attack 또는 replay 결함 위험.
 
 ---
 
@@ -514,21 +563,21 @@ z.object({
 | HTTP | code | message (영어) | 발생 시 |
 |------|------|---------------|--------|
 | 400 | `ERR_BAD_REQUEST` | The request is malformed. | 필수 필드 누락, JSON 파싱 실패 |
-| 400 | `ERR_WEBHOOK_SIGNATURE` | Invalid signature. | Stripe webhook 검증 실패 |
+| 400 | `ERR_WEBHOOK_SIGNATURE` | Invalid signature. | Dodo Standard Webhooks 헤더(`webhook-id` / `webhook-timestamp` / `webhook-signature`) 검증 실패 (`standardwebhooks` npm) |
 | 401 | `ERR_UNAUTHENTICATED` | Sign in to continue. | 세션 없음/만료 |
 | 402 | `ERR_OUT_OF_CREDITS` | You have no remaining credits. Please purchase a plan. | balance=0 AND no active sub/pass |
 | 402 | `ERR_SOFT_CAP_REACHED` | You've hit this period's soft cap. Try again next period. | usage_count ≥ soft_cap |
 | 402 | `ERR_INSUFFICIENT_CREDITS` | (alias of OUT_OF_CREDITS for legacy clients) | (사용하지 않음 — OUT_OF_CREDITS만 사용) |
 | 403 | `ERR_FORBIDDEN` | You do not have access to this resource. | RLS 위반 |
 | 404 | `ERR_NOT_FOUND` | Not found. | 리소스 없음 |
-| 409 | `ERR_DUPLICATE_REFUND` | This refund was already processed. | Webhook 중복 (stripe_events 충돌 + processed=true) |
+| 409 | `ERR_DUPLICATE_REFUND` | This refund was already processed. | Webhook 중복 (dodo_events 충돌 + processed=true) |
 | 413 | `ERR_INPUT_TOO_LARGE` | The input exceeds the size limit. | job_text > 64k, resume_text > 16k |
 | 422 | `ERR_VALIDATION` | The response failed schema validation. | LLM 출력이 Structured Outputs 스키마 미준수 |
 | 429 | `ERR_RATE_LIMITED` | Too many requests. Please slow down. | Rate limit 또는 동시 lock 또는 daily cap |
 | 500 | `ERR_INTERNAL` | Something went wrong. We've been notified. | 미분류 — Sentry capture |
 | 500 | `ERR_PROMPT_NOT_FOUND` | System prompt not configured. | `system_prompts` 조회 실패 + env fallback도 없음 |
 | 502 | `ERR_LLM_UPSTREAM` | The analyzer is temporarily unavailable. Please retry. | OpenAI Silent Retry ×3 실패 — **0 차감** |
-| 502 | `ERR_STRIPE_UPSTREAM` | Payment provider is temporarily unavailable. | Stripe API 호출 실패 |
+| 502 | `ERR_DODO_UPSTREAM` | Payment provider is temporarily unavailable. | Dodo Payments API 호출 실패 (`dodopayments` SDK) |
 
 > **별명 정리**: 본 문서는 `ERR_LLM_UPSTREAM`을 정식 코드로 사용한다. `ERR_OPENAI_UPSTREAM`(spec/03 §4)은 동일 코드의 별명이며, 구현에서는 `ERR_LLM_UPSTREAM`을 단일 출처로 한다.
 
@@ -537,11 +586,11 @@ z.object({
 ## 5. 공통 동작
 
 - **Pagination**: cursor 기반 (`created_at desc` + `id` tiebreak). `next_cursor`는 마지막 row의 `created_at` ISO 문자열.
-- **Idempotency**: `Idempotency-Key` 헤더 허용 (analyze, checkout). KV `idem:{endpoint}:{uid}:{key}` TTL 60s에 결과 캐시.
+- **Idempotency**: `Idempotency-Key` 헤더 허용 (analyze, checkout). KV `idem:{endpoint}:{uid}:{key}` TTL 60s에 결과 캐시. Webhook 멱등성은 Standard Webhooks `webhook-id` → `dodo_events.id` PK로 보장.
 - **Timestamps**: ISO 8601 UTC.
-- **Currency**: USD 정수 cents (Stripe convention). 단, API JSON 응답에서 hourly rate 등 사용자 가시 금액은 정수 USD ($45 = 45).
+- **Currency**: USD 정수 cents. 단, API JSON 응답에서 hourly rate 등 사용자 가시 금액은 정수 USD ($45 = 45).
 - **Locale**: `en` 단일.
-- **CORS**: API는 same-origin (`app.connectsaver.com`)만 허용. Stripe webhook은 cors 무관 (signature 검증).
+- **CORS**: API는 same-origin (`app.connectsaver.com`)만 허용. Dodo webhook은 cors 무관 (Standard Webhooks signature 검증).
 
 ---
 

@@ -1,5 +1,6 @@
 # 화면 설계 / 와이어프레임 — ConnectSaver
 
+> [PIVOT-01 rev2 — 2026-05-29] Pricing CTA / Account Billing / 결제 플로우 라벨을 Dodo Payments 기준으로 갱신했다. 결정 매트릭스는 `_workspace/00_input.md §11`.
 > All user-facing copy is English (Q5).
 > Design system: shadcn/ui (Radix) + Tailwind. Mobile-friendly but desktop-first (Upwork 사용자는 데스크톱 비중 큼).
 
@@ -16,7 +17,7 @@
 | 5 | Dashboard | `/dashboard` | 분석 입력, 잔여 크레딧 카드, 분석 이력 리스트 | `Card`, `Textarea`, `Button`, `Spinner`, `List` |
 | 6 | Report Modal | (Dashboard 내) | 분석 결과 모달 — 위험 시 BLOCK, 안전 시 Score | `Dialog`, `Alert`, `Progress`, `Badge` |
 | 7 | Analysis Detail | `/analyses/[id]` | 과거 분석 단건 상세 (Report와 동일 레이아웃) | 동일 |
-| 8 | Account Settings | `/account` | 프로필 재편집, 결제 이력, 구독 취소 링크 (Stripe portal) | `Tabs`, `Card`, `Button` |
+| 8 | Account Settings | `/account` | 프로필 재편집, 결제 이력, 구독 취소 링크 (Dodo Customer Portal — `[TBD: confirm with Dodo docs]` for exact URL) | `Tabs`, `Card`, `Button` |
 | 9 | Out-of-credits | (Dashboard banner / Pricing redirect) | 크레딧 소진 안내 | `Alert`, `Button` |
 | 10 | 404 / 500 | `/_not-found`, `error.tsx` | | `Card`, `Button` |
 
@@ -179,8 +180,9 @@
 ├────────────────────────────────────────────────────────────────┤
 │ (Billing tab)                                                  │
 │  Active plan: Weekly Pass (expires 2026-06-03, 14/100 used)    │
-│  [Manage in Stripe Portal ↗]                                   │
-│  Payment history: see Stripe receipts in your email.           │
+│  [Manage in Dodo Customer Portal ↗]                            │
+│  Payment history: see Dodo Payments receipts in your email.    │
+│  Taxes (VAT/GST/Sales Tax): handled by Dodo Payments (MoR).    │
 └────────────────────────────────────────────────────────────────┘
 ```
 
@@ -197,12 +199,12 @@ flowchart LR
   A -->|safe| RS[Report Modal: Safe]
   A -->|risk| RD[Report Modal: Block]
   A -->|out of credits| PR[/pricing/]
-  PR -->|Checkout| ST[Stripe Checkout]
-  ST -->|webhook ok| DB
+  PR -->|Checkout| DC[Dodo Hosted Checkout]
+  DC -->|webhook ok<br/>payment.succeeded / subscription.active| DB
   RD -->|Report scam| RPT[/api/report-scam/]
   RS -->|Report scam| RPT
   DB -->|Account| AC[/account/]
-  AC -->|Stripe portal| SP[Stripe Customer Portal]
+  AC -->|Dodo portal| DP[Dodo Customer Portal<br/>[TBD URL]]
 ```
 
 ## 4. 핵심 상태 다이어그램
@@ -231,7 +233,7 @@ stateDiagram-v2
   Refundable: 0 use within 7 days
   WeeklyActive --> Refundable: t<7d AND usage=0
   MonthlyActive --> Refundable: t<7d AND usage=0
-  Refundable --> RefundedZeroCredit: charge.refunded
+  Refundable --> RefundedZeroCredit: refund.succeeded
 ```
 
 ### 4.2 Analysis Lifecycle

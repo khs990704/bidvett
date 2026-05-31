@@ -24,9 +24,10 @@ COMMENT ON TABLE  public.users_profile IS '1:1 with auth.users. Used by /api/ana
 COMMENT ON COLUMN public.users_profile.timezone IS 'Free-form. IANA preferred (e.g. Asia/Seoul). UTC offset (UTC+9) also accepted.';
 
 -- ====================================================================
--- 2) stripe_events — created BEFORE credit_ledger / subscriptions (FK targets)
+-- 2) dodo_events — webhook idempotency log for Dodo Payments (PIVOT-01).
+--    Created BEFORE credit_ledger / subscriptions (FK targets).
 -- ====================================================================
-CREATE TABLE IF NOT EXISTS public.stripe_events (
+CREATE TABLE IF NOT EXISTS public.dodo_events (
   id            text        PRIMARY KEY,
   type          text        NOT NULL,
   payload       jsonb       NOT NULL,
@@ -35,10 +36,10 @@ CREATE TABLE IF NOT EXISTS public.stripe_events (
   processed_at  timestamptz
 );
 
-CREATE INDEX IF NOT EXISTS idx_stripe_events_received
-  ON public.stripe_events (received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dodo_events_received
+  ON public.dodo_events (received_at DESC);
 
-COMMENT ON TABLE public.stripe_events IS 'Idempotency log. Webhook handler inserts ON CONFLICT DO NOTHING; if already processed=true, returns 200 immediately.';
+COMMENT ON TABLE public.dodo_events IS 'Idempotency log. Webhook handler inserts ON CONFLICT DO NOTHING; if already processed=true, returns 200 immediately.';
 
 -- ====================================================================
 -- 3) analyses — created BEFORE credit_ledger (FK target)
@@ -90,7 +91,7 @@ CREATE TABLE IF NOT EXISTS public.credit_ledger (
   delta             int         NOT NULL,
   balance_after     int         NOT NULL CHECK (balance_after >= 0),
   analysis_id       uuid        REFERENCES public.analyses(id) ON DELETE SET NULL,
-  stripe_event_id   text        REFERENCES public.stripe_events(id) ON DELETE SET NULL,
+  dodo_event_id   text        REFERENCES public.dodo_events(id) ON DELETE SET NULL,
   note              text,
   created_at        timestamptz NOT NULL DEFAULT now()
 );
@@ -98,9 +99,9 @@ CREATE TABLE IF NOT EXISTS public.credit_ledger (
 CREATE INDEX IF NOT EXISTS idx_credit_ledger_user_created
   ON public.credit_ledger (user_id, created_at DESC);
 
-CREATE UNIQUE INDEX IF NOT EXISTS uniq_credit_ledger_stripe_event
-  ON public.credit_ledger (stripe_event_id)
-  WHERE stripe_event_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_credit_ledger_dodo_event
+  ON public.credit_ledger (dodo_event_id)
+  WHERE dodo_event_id IS NOT NULL;
 
 COMMENT ON TABLE public.credit_ledger IS 'Append-only ledger. Balance is computed as latest row balance_after.';
 
@@ -116,10 +117,10 @@ CREATE TABLE IF NOT EXISTS public.subscriptions (
   period_end                      timestamptz NOT NULL,
   usage_count                     int         NOT NULL DEFAULT 0 CHECK (usage_count >= 0),
   soft_cap                        int         NOT NULL CHECK (soft_cap > 0),
-  stripe_customer_id              text        NOT NULL,
-  stripe_subscription_id          text,
-  stripe_checkout_session_id      text,
-  stripe_event_id                 text        REFERENCES public.stripe_events(id) ON DELETE SET NULL,
+  dodo_customer_id              text        NOT NULL,
+  dodo_subscription_id          text,
+  dodo_checkout_session_id      text,
+  dodo_event_id                 text        REFERENCES public.dodo_events(id) ON DELETE SET NULL,
   created_at                      timestamptz NOT NULL DEFAULT now(),
   updated_at                      timestamptz NOT NULL DEFAULT now()
 );
@@ -132,12 +133,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uniq_subscriptions_active_per_user
   WHERE status = 'active';
 
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_subscriptions_checkout_session
-  ON public.subscriptions (stripe_checkout_session_id)
-  WHERE stripe_checkout_session_id IS NOT NULL;
+  ON public.subscriptions (dodo_checkout_session_id)
+  WHERE dodo_checkout_session_id IS NOT NULL;
 
-CREATE UNIQUE INDEX IF NOT EXISTS uniq_subscriptions_stripe_sub
-  ON public.subscriptions (stripe_subscription_id)
-  WHERE stripe_subscription_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_subscriptions_dodo_sub
+  ON public.subscriptions (dodo_subscription_id)
+  WHERE dodo_subscription_id IS NOT NULL;
 
 -- ====================================================================
 -- 6) system_prompts

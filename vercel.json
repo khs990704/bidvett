@@ -9,7 +9,7 @@
     "src/app/api/profile/extract/route.ts": {
       "maxDuration": 15
     },
-    "src/app/api/webhooks/stripe/route.ts": {
+    "src/app/api/webhooks/dodo/route.ts": {
       "maxDuration": 15
     }
   }

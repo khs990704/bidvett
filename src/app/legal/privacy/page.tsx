@@ -18,7 +18,9 @@ export default function PrivacyPage() {
           short: we store your Google account profile, the resume text you
           paste, and your job analysis history. We send pasted text to OpenAI
           for analysis. We do not sell or share your data with third parties
-          beyond Stripe (payments), Supabase (hosting), and OpenAI (analysis).
+          beyond Dodo Payments (payments — acts as the Merchant of Record and
+          handles VAT/GST tax remittance), Supabase (hosting), and OpenAI
+          (analysis).
         </p>
       </main>
       <Footer />

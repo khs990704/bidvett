@@ -89,17 +89,20 @@ export function AccountBilling() {
             <Link href="/pricing">View plans</Link>
           </Button>
           <Button asChild variant="ghost">
+            {/* TODO(dodo-docs): confirm exact Dodo Customer Portal URL pattern
+                — Dodo may issue per-customer signed links instead of a single
+                public entry point. */}
             <a
-              href="https://billing.stripe.com/p/login"
+              href="https://app.dodopayments.com/customer-portal"
               target="_blank"
               rel="noopener noreferrer"
             >
-              Manage in Stripe Portal ↗
+              Manage in Dodo Portal ↗
             </a>
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Payment history and invoices are available in your Stripe receipts.
+          Payment history and invoices are available in your Dodo receipts.
         </p>
       </CardContent>
     </Card>
