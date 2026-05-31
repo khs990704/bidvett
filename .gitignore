@@ -69,3 +69,5 @@ supabase/.env
 # ---------- DO NOT IGNORE (sidecar docs intentionally tracked) ----------
 # !idea.md, !idea_inquiry.md, !_workspace/**, !spec/** are tracked by default
 # (no explicit rules added — none of the above patterns match them)
+.vercel
+.env*

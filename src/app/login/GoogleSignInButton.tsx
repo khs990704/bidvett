@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/sonner";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { publicEnv } from "@/lib/env";
 
 interface Props {
   redirectTo: string;
@@ -18,12 +17,11 @@ export function GoogleSignInButton({ redirectTo }: Props) {
     setLoading(true);
     try {
       const supabase = createSupabaseBrowserClient();
-      const appUrl = publicEnv.NEXT_PUBLIC_APP_URL || window.location.origin;
       const next = encodeURIComponent(redirectTo || "/dashboard");
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${appUrl}/api/auth/callback?next=${next}`,
+          redirectTo: `${window.location.origin}/api/auth/callback?next=${next}`,
         },
       });
       if (error) {
