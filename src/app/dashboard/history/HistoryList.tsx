@@ -20,12 +20,10 @@ export function HistoryList() {
   const [done, setDone] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [initialLoaded, setInitialLoaded] = React.useState(false);
-  const [loadError, setLoadError] = React.useState<string | null>(null);
 
   const load = React.useCallback(
     async (nextCursor?: string) => {
       setLoading(true);
-      if (!nextCursor) setLoadError(null);
       try {
         const res = await listAnalyses({
           limit: PAGE_SIZE,
@@ -35,13 +33,9 @@ export function HistoryList() {
         setCursor(res.next_cursor);
         if (!res.next_cursor || res.items.length < PAGE_SIZE) setDone(true);
       } catch (err) {
-        const message =
-          err instanceof ApiError ? err.message : "Please try again.";
-        if (nextCursor) {
-          toast.error("Could not load more.", { description: message });
-        } else {
-          setLoadError(message);
-        }
+        toast.error("Could not load history.", {
+          description: err instanceof ApiError ? err.message : undefined,
+        });
       } finally {
         setLoading(false);
         setInitialLoaded(true);
@@ -60,26 +54,6 @@ export function HistoryList() {
       <Card>
         <CardContent className="pt-6 flex items-center gap-2 text-sm text-muted-foreground">
           <Spinner /> Loading…
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (loadError) {
-    return (
-      <Card>
-        <CardContent className="pt-6 space-y-3 text-sm">
-          <p className="font-medium">Could not load history.</p>
-          <p className="text-muted-foreground">{loadError}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void load()}
-            disabled={loading}
-          >
-            {loading ? <Spinner /> : null}
-            Try again
-          </Button>
         </CardContent>
       </Card>
     );
