@@ -6,7 +6,6 @@
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { publicEnv } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +13,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const code = url.searchParams.get('code');
   const next = url.searchParams.get('next') ?? '/dashboard';
-  const base = publicEnv.NEXT_PUBLIC_APP_URL;
+  const base = url.origin;
 
   if (!code) {
     return NextResponse.redirect(`${base}/login?error=oauth_failed`);
