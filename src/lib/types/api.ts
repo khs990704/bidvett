@@ -120,6 +120,12 @@ export interface CheckoutResponse {
   session_id: string;
 }
 
+// ── POST /api/subscription/cancel ─────────────────────────────────────────
+export interface CancelSubscriptionResponse {
+  ok: true;
+  already_cancelled?: boolean;
+}
+
 // ── 3.10 POST /api/report-scam ────────────────────────────────────────────
 export interface ReportScamRequest {
   analysis_id: string;

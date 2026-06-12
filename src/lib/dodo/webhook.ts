@@ -1,40 +1,34 @@
 /**
- * Dodo Payments Webhook event router.
- * Source: _workspace/01_architecture.md §6.7, _workspace/02_api_spec.md §3.9,
- *         _workspace/00_input.md §11.3 (PIVOT-01).
+ * Dodo Payments Webhook router.
  *
- * Signature verification follows the Standard Webhooks spec
- * (https://www.standardwebhooks.com/). Headers expected on inbound POST:
- *   - webhook-id
+ * Verification: Standard Webhooks (https://www.standardwebhooks.com/).
+ * Required headers on inbound POST:
+ *   - webhook-id        ← also the event/idempotency id (body has no `id`).
  *   - webhook-timestamp
  *   - webhook-signature
  *
- * Handles 5 events (Dodo Payments event taxonomy):
- *   - payment.succeeded
- *       * credit_single  → credit_ledger insert (+1, type='purchase_single')
- *       * weekly_pass    → subscriptions insert (status='active', soft_cap=100, +7d)
- *       * monthly_sub    → subscriptions insert (status='active', soft_cap=500, +30d)
- *   - subscription.active   → upsert subscriptions row (active)
- *   - subscription.renewed  → extend period_end, reset usage_count
- *   - subscription.cancelled → status='canceled'
- *   - refund.succeeded      → guard (0 usage + ≤7d) then credit_ledger -1 / mark sub refunded
+ * Subscribed events (Dodo Dashboard → Webhook endpoint):
+ *   - payment.succeeded      → credit_single only (one-time credit purchase).
+ *   - subscription.active    → weekly_pass / monthly_sub upsert.
+ *   - subscription.renewed   → extend period, reset usage_count + cancelled_at.
+ *   - subscription.cancelled → record cancelled_at; status unchanged.
  *
- * Idempotency is enforced via `dodo_events` PK (event.id). The route handler
- * inserts the event row first and only invokes `handleDodoEvent` if INSERT
- * succeeded (i.e., not already processed).
+ * Payload shape is per `dodopayments` SDK `WebhookPayload`:
+ *   { business_id, type, timestamp, data: Payment | Subscription | Refund | ... }
+ * `data` IS the underlying entity (no `data.object` wrapper).
  */
-// TODO(dodo-docs): confirm exact Standard Webhooks helper import path. The
-// official `standardwebhooks` npm package is assumed to export a `Webhook`
-// class with a `verify(rawBody, headers)` method that throws on failure.
 import { Webhook } from 'standardwebhooks';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { serverEnv } from '@/lib/env';
 import { PLAN_SOFT_CAP, PLAN_PERIOD_DAYS } from '@/lib/dodo/plans';
 
-// ── Dodo event shape (minimal subset we depend on) ───────────────────
-// TODO(dodo-docs): confirm exact event envelope. We assume the Standard
-// Webhooks spec wraps Dodo's domain payload as `{ id, type, data: {...} }`.
+export interface VerifiedDodoPayload {
+  type: string;
+  data: Record<string, unknown>;
+}
+
 export interface DodoEvent {
+  /** Sourced from the `webhook-id` HTTP header (Standard Webhooks message id). */
   id: string;
   type: string;
   data: Record<string, unknown>;
@@ -54,18 +48,14 @@ function parsePlan(meta: Record<string, unknown> | null | undefined): PlanFromMe
 
 function parseUserId(meta: Record<string, unknown> | null | undefined): string | null {
   const v = meta?.user_id;
-  return typeof v === 'string' ? v : null;
+  return typeof v === 'string' && v.length > 0 ? v : null;
 }
 
 function parseString(v: unknown): string | null {
-  return typeof v === 'string' ? v : null;
+  return typeof v === 'string' && v.length > 0 ? v : null;
 }
 
-function parseNumber(v: unknown): number | null {
-  return typeof v === 'number' ? v : null;
-}
-
-// ── Signature verification (Standard Webhooks) ───────────────────────
+// ── Signature verification (Standard Webhooks) ────────────────────────
 export interface VerifyArgs {
   rawBody: string;
   headers: Record<string, string>;
@@ -73,244 +63,221 @@ export interface VerifyArgs {
 }
 
 /**
- * Verify the inbound webhook using the Standard Webhooks library. Throws on
- * invalid signature / missing headers — the route handler maps that to
- * ERR_WEBHOOK_SIGNATURE 400.
+ * Verifies the Standard Webhooks signature and returns the parsed payload.
+ * Throws WebhookVerificationError (or similar) on invalid sig / timestamp.
+ *
+ * The Dodo secret is issued as `whsec_<base64>`. The `standardwebhooks` lib
+ * strips the prefix and base64-decodes automatically — pass it as-is.
  */
-export function verifyDodoSignature(args: VerifyArgs): DodoEvent {
+export function verifyDodoSignature(args: VerifyArgs): VerifiedDodoPayload {
   const secret = args.secret ?? serverEnv().DODO_WEBHOOK_SECRET;
-  // TODO(dodo-docs): confirm whether the `standardwebhooks` library expects
-  // the raw secret string or a base64-encoded form (some providers issue the
-  // secret with a `whsec_` prefix that must be stripped first).
   const wh = new Webhook(secret);
-  // `verify` throws on signature mismatch / replay; returns the parsed JSON
-  // payload on success.
   const verified = wh.verify(args.rawBody, args.headers) as unknown;
   const evt = asRecord(verified);
-  if (!evt || typeof evt.id !== 'string' || typeof evt.type !== 'string') {
+  if (!evt || typeof evt.type !== 'string') {
     throw new Error('Verified payload is not a valid Dodo event envelope');
   }
   return {
-    id: evt.id,
     type: evt.type,
     data: asRecord(evt.data) ?? {},
   };
 }
 
-// ── Event dispatch ───────────────────────────────────────────────────
+// ── Event dispatch ────────────────────────────────────────────────────
 export async function handleDodoEvent(event: DodoEvent): Promise<void> {
   const admin = supabaseAdmin();
   const data = event.data;
-  // Many Dodo events carry the underlying object (payment / subscription /
-  // refund) on a conventional key. We probe a few shapes defensively because
-  // the exact wrapper is not yet pinned down.
-  // TODO(dodo-docs): confirm canonical event.data shape.
-  const obj =
-    asRecord(data.object) ??
-    asRecord(data.payment) ??
-    asRecord(data.subscription) ??
-    asRecord(data.refund) ??
-    data;
-  const metadata = asRecord(obj.metadata) ?? asRecord(data.metadata);
+  const metadata = asRecord(data.metadata);
+  const customer = asRecord(data.customer);
 
   switch (event.type) {
     case 'payment.succeeded': {
+      // One-time credit purchase only. Subscription-plan first payments are
+      // handled by subscription.active (the recurring source of truth).
       const userId = parseUserId(metadata);
       const plan = parsePlan(metadata);
       if (!userId || !plan) {
         // eslint-disable-next-line no-console
-        console.warn('[dodo.webhook] missing user_id or plan', {
+        console.warn('[dodo.webhook] payment.succeeded missing metadata', {
           event_id: event.id,
         });
         return;
       }
-
-      if (plan === 'credit_single') {
-        // Fetch current balance (single-row read; race-free enough since this
-        // event is processed once per dodo_events PK).
-        const { data: latest } = await admin
-          .from('credit_ledger')
-          .select('balance_after')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        const prev = latest?.balance_after ?? 0;
-        await admin.from('credit_ledger').insert({
-          user_id: userId,
-          type: 'purchase_single',
-          delta: 1,
-          balance_after: prev + 1,
-          dodo_event_id: event.id,
-          note: `Dodo purchase ${parseString(obj.id) ?? event.id}`,
-        });
+      if (plan !== 'credit_single') {
+        // weekly_pass / monthly_sub → defer to subscription.active.
         return;
       }
 
-      // weekly_pass or monthly_sub → subscriptions row
-      const now = new Date();
-      const periodEnd = new Date(now.getTime() + PLAN_PERIOD_DAYS[plan] * 86_400_000);
-      await admin.from('subscriptions').insert({
+      const { data: latest } = await admin
+        .from('credit_ledger')
+        .select('balance_after')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const prev = latest?.balance_after ?? 0;
+      const insertRes = await admin.from('credit_ledger').insert({
         user_id: userId,
-        plan,
-        status: 'active',
-        period_start: now.toISOString(),
-        period_end: periodEnd.toISOString(),
-        usage_count: 0,
-        soft_cap: PLAN_SOFT_CAP[plan],
-        dodo_customer_id:
-          parseString(obj.customer_id) ?? parseString(obj.customerId) ?? '',
-        dodo_subscription_id:
-          parseString(obj.subscription_id) ?? parseString(obj.subscriptionId) ?? null,
-        dodo_checkout_session_id:
-          parseString(obj.checkout_session_id) ??
-          parseString(obj.checkoutSessionId) ??
-          parseString(obj.id),
+        type: 'purchase_single',
+        delta: 1,
+        balance_after: prev + 1,
         dodo_event_id: event.id,
+        note: `Dodo purchase ${parseString(data.payment_id) ?? event.id}`,
       });
+      // 23505 = unique_violation on uniq_credit_ledger_dodo_event — duplicate
+      // delivery already credited, safe to swallow.
+      if (insertRes.error && insertRes.error.code !== '23505') {
+        throw insertRes.error;
+      }
       return;
     }
 
     case 'subscription.active': {
       const userId = parseUserId(metadata);
       const plan = parsePlan(metadata);
-      const subId =
-        parseString(obj.subscription_id) ??
-        parseString(obj.subscriptionId) ??
-        parseString(obj.id);
-      // subscription.active is never emitted for credit_single (one-shot
-      // payment); guard explicitly so soft-cap/period lookups are safe.
-      if (!userId || !plan || !subId || plan === 'credit_single') {
+      const subId = parseString(data.subscription_id);
+      const customerId = parseString(customer?.customer_id);
+
+      if (!userId || !plan || !subId || !customerId || plan === 'credit_single') {
         // eslint-disable-next-line no-console
         console.warn('[dodo.webhook] subscription.active missing fields', {
           event_id: event.id,
+          have: {
+            userId: !!userId,
+            plan,
+            subId: !!subId,
+            customerId: !!customerId,
+          },
         });
         return;
       }
-      const now = new Date();
-      const periodEnd = new Date(now.getTime() + PLAN_PERIOD_DAYS[plan] * 86_400_000);
-      await admin.from('subscriptions').insert({
-        user_id: userId,
-        plan,
-        status: 'active',
-        period_start: now.toISOString(),
-        period_end: periodEnd.toISOString(),
-        usage_count: 0,
-        soft_cap: PLAN_SOFT_CAP[plan],
-        dodo_customer_id:
-          parseString(obj.customer_id) ?? parseString(obj.customerId) ?? '',
-        dodo_subscription_id: subId,
-        dodo_checkout_session_id:
-          parseString(obj.checkout_session_id) ??
-          parseString(obj.checkoutSessionId) ??
-          null,
-        dodo_event_id: event.id,
-      });
+
+      const periodStart =
+        parseString(data.previous_billing_date) ?? new Date().toISOString();
+      const periodEnd =
+        parseString(data.next_billing_date) ??
+        new Date(Date.now() + PLAN_PERIOD_DAYS[plan] * 86_400_000).toISOString();
+
+      // Idempotent upsert by dodo_subscription_id. The dodo_events PK guards
+      // same-delivery retries; this guards repeat subscription.active events
+      // (e.g., on_hold → active transitions).
+      const { data: existing } = await admin
+        .from('subscriptions')
+        .select('id')
+        .eq('dodo_subscription_id', subId)
+        .maybeSingle();
+
+      if (existing) {
+        await admin
+          .from('subscriptions')
+          .update({
+            status: 'active',
+            period_start: periodStart,
+            period_end: periodEnd,
+            usage_count: 0,
+            cancelled_at: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existing.id);
+      } else {
+        // Plan-upgrade reconciliation: the partial index
+        // uniq_subscriptions_active_per_user permits only one active row per
+        // user. Cancel any other active row before inserting the new one so a
+        // weekly→monthly upgrade does not 23505. The previous row keeps its
+        // dodo_subscription_id, so refund / cancel webhooks can still target it.
+        await admin
+          .from('subscriptions')
+          .update({
+            status: 'canceled',
+            cancelled_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .neq('dodo_subscription_id', subId);
+
+        const insertRes = await admin.from('subscriptions').insert({
+          user_id: userId,
+          plan,
+          status: 'active',
+          period_start: periodStart,
+          period_end: periodEnd,
+          usage_count: 0,
+          soft_cap: PLAN_SOFT_CAP[plan],
+          dodo_customer_id: customerId,
+          dodo_subscription_id: subId,
+          dodo_event_id: event.id,
+        });
+        if (insertRes.error && insertRes.error.code !== '23505') {
+          throw insertRes.error;
+        }
+      }
       return;
     }
 
     case 'subscription.renewed': {
-      const subId =
-        parseString(obj.subscription_id) ??
-        parseString(obj.subscriptionId) ??
-        parseString(obj.id);
-      if (!subId) return;
-      // Renewal extends the period by the plan's standard window. We default
-      // to monthly (30d) when the renewed event does not echo the plan in
-      // metadata — matches the v1 invoice.paid behavior.
-      const rawPlan = parsePlan(metadata);
-      const plan: 'weekly_pass' | 'monthly_sub' =
-        rawPlan === 'weekly_pass' ? 'weekly_pass' : 'monthly_sub';
-      const newPeriodEnd = new Date(Date.now() + PLAN_PERIOD_DAYS[plan] * 86_400_000);
+      // Recurring payment succeeded → roll the billing window forward and
+      // reset the usage counter. cancelled_at is nulled defensively (a renewal
+      // should not happen with a pending cancel, but if it does, the user paid
+      // so they get the new period).
+      const subId = parseString(data.subscription_id);
+      if (!subId) {
+        // eslint-disable-next-line no-console
+        console.warn('[dodo.webhook] subscription.renewed missing subscription_id', {
+          event_id: event.id,
+        });
+        return;
+      }
+      const periodStart =
+        parseString(data.previous_billing_date) ?? new Date().toISOString();
+      const periodEnd = parseString(data.next_billing_date);
+      if (!periodEnd) {
+        // eslint-disable-next-line no-console
+        console.warn('[dodo.webhook] subscription.renewed missing next_billing_date', {
+          event_id: event.id,
+        });
+        return;
+      }
       await admin
         .from('subscriptions')
         .update({
-          period_end: newPeriodEnd.toISOString(),
-          usage_count: 0,
           status: 'active',
+          period_start: periodStart,
+          period_end: periodEnd,
+          usage_count: 0,
+          cancelled_at: null,
+          updated_at: new Date().toISOString(),
         })
         .eq('dodo_subscription_id', subId);
       return;
     }
 
     case 'subscription.cancelled': {
-      const subId =
-        parseString(obj.subscription_id) ??
-        parseString(obj.subscriptionId) ??
-        parseString(obj.id);
-      if (!subId) return;
-      await admin
-        .from('subscriptions')
-        .update({ status: 'canceled' })
-        .eq('dodo_subscription_id', subId);
-      return;
-    }
-
-    case 'refund.succeeded': {
-      const userId = parseUserId(metadata);
-      const plan = parsePlan(metadata);
-      if (!userId) {
+      // Record cancelled_at only; status remains 'active' so the user keeps
+      // access until period_end. /api/credits derives cancel_at_period_end
+      // from cancelled_at IS NOT NULL.
+      const subId = parseString(data.subscription_id);
+      if (!subId) {
         // eslint-disable-next-line no-console
-        console.warn('[dodo.webhook] refund without user_id metadata', {
+        console.warn('[dodo.webhook] subscription.cancelled missing subscription_id', {
           event_id: event.id,
         });
         return;
       }
-
-      // Guard: 0 usage within 7 days of the original payment.
-      // TODO(dodo-docs): confirm the exact "original payment created_at" field
-      // — `payment_created_at` / `paymentCreatedAt` / `created_at` are all
-      // plausible. We probe defensively.
-      const createdAt =
-        parseNumber(obj.payment_created_at) ??
-        parseNumber(obj.paymentCreatedAt) ??
-        parseNumber(obj.created_at) ??
-        parseNumber(obj.createdAt) ??
-        0;
-      // Accept either epoch-seconds or epoch-ms.
-      const createdMs = createdAt > 1e12 ? createdAt : createdAt * 1000;
-      const ageMs = Date.now() - createdMs;
-      const sevenDaysMs = 7 * 86_400_000;
-      const within7d = createdMs > 0 && ageMs <= sevenDaysMs;
-
-      if (plan === 'credit_single') {
-        const { data: latest } = await admin
-          .from('credit_ledger')
-          .select('balance_after')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        const prev = latest?.balance_after ?? 0;
-        const next = Math.max(0, prev - 1);
-        await admin.from('credit_ledger').insert({
-          user_id: userId,
-          type: 'refund_reversal',
-          delta: -1,
-          balance_after: next,
-          dodo_event_id: event.id,
-          note: within7d
-            ? `Refund of payment ${parseString(obj.id) ?? event.id} (within 7d)`
-            : `Refund of payment ${parseString(obj.id) ?? event.id} (operator override after 7d)`,
-        });
-        return;
-      }
-
-      // Pass / sub refund: mark active subscription row as refunded.
-      const customerId =
-        parseString(obj.customer_id) ?? parseString(obj.customerId) ?? null;
-      if (customerId) {
-        await admin
-          .from('subscriptions')
-          .update({ status: 'refunded' })
-          .eq('dodo_customer_id', customerId)
-          .eq('status', 'active');
-      }
+      const cancelledAt =
+        parseString(data.cancelled_at) ?? new Date().toISOString();
+      await admin
+        .from('subscriptions')
+        .update({
+          cancelled_at: cancelledAt,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('dodo_subscription_id', subId);
       return;
     }
 
     default:
-      // Unhandled events are ignored (200 OK at the route layer).
+      // Not subscribed in the current Dodo dashboard config — silently ignore.
       return;
   }
 }

@@ -37,7 +37,9 @@ export const GET = withErrorHandling(async (req: Request) => {
   const nowIso = new Date().toISOString();
   const { data: subs } = await supabase
     .from('subscriptions')
-    .select('plan, period_end, usage_count, soft_cap, status, dodo_subscription_id')
+    .select(
+      'plan, period_end, usage_count, soft_cap, status, dodo_subscription_id, cancelled_at',
+    )
     .eq('user_id', user.id)
     .eq('status', 'active')
     .gt('period_end', nowIso)
@@ -60,11 +62,7 @@ export const GET = withErrorHandling(async (req: Request) => {
         period_end: sub.period_end,
         usage_this_period: sub.usage_count,
         soft_cap: sub.soft_cap,
-        // cancel_at_period_end is provider-sourced (Dodo `subscription.cancelled`
-        // event). Until we persist it on the subscriptions row, expose false.
-        // TODO(dodo-docs): confirm whether Dodo emits an at-period-end flag
-        // (vs. immediate cancel) and persist it on subscriptions when it does.
-        cancel_at_period_end: false,
+        cancel_at_period_end: sub.cancelled_at != null,
       };
     }
   }

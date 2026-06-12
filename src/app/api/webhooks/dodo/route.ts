@@ -38,14 +38,20 @@ export async function POST(req: Request) {
   }
 
   // 3) Signature verification (Standard Webhooks HMAC-SHA256).
-  let event;
+  // The event id is the `webhook-id` HEADER (Dodo's body carries no `id`).
+  let verified;
   try {
-    event = verifyDodoSignature({ rawBody, headers });
+    verified = verifyDodoSignature({ rawBody, headers });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn('[dodo.webhook] sig verify failed', err);
     return apiError(400, ErrorCode.WEBHOOK_SIGNATURE);
   }
+  const event = {
+    id: headers['webhook-id'],
+    type: verified.type,
+    data: verified.data,
+  };
 
   // 4) Idempotency: insert dodo_events row, treat conflict as already processed.
   const admin = supabaseAdmin();
@@ -55,7 +61,7 @@ export async function POST(req: Request) {
       {
         id: event.id,
         type: event.type,
-        payload: event as unknown as Record<string, unknown>,
+        payload: { type: event.type, data: event.data } as Record<string, unknown>,
         processed: false,
       },
       { count: 'exact' },

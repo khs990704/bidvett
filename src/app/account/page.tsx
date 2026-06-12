@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { Header } from "@/components/nav/Header";
 import { Footer } from "@/components/nav/Footer";
@@ -8,11 +9,16 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { AccountProfileForm } from "./AccountProfileForm";
 import { AccountBilling } from "./AccountBilling";
 
-export default async function AccountPage() {
+export default async function AccountPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string; dodo?: string }>;
+}) {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -21,6 +27,12 @@ export default async function AccountPage() {
   if (!user) {
     redirect("/login?redirect_to=/account");
   }
+
+  const sp = await searchParams;
+  // After Dodo redirect (?dodo=success) land on the Billing tab so polling
+  // starts in view. `tab=billing` is also respected as an explicit hint.
+  const defaultTab =
+    sp.tab === "billing" || sp.dodo === "success" ? "billing" : "profile";
 
   const { data: profile } = await supabase
     .from("users_profile")
@@ -41,7 +53,7 @@ export default async function AccountPage() {
           Signed in as <span className="font-medium">{user.email}</span>
         </p>
 
-        <Tabs defaultValue="profile">
+        <Tabs defaultValue={defaultTab}>
           <TabsList>
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="billing">Billing</TabsTrigger>
@@ -59,7 +71,17 @@ export default async function AccountPage() {
           </TabsContent>
 
           <TabsContent value="billing" className="mt-6">
-            <AccountBilling />
+            {/* AccountBilling uses useSearchParams; Suspense lets the rest of
+                the page stream statically when possible. */}
+            <Suspense
+              fallback={
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Spinner /> Loading…
+                </div>
+              }
+            >
+              <AccountBilling />
+            </Suspense>
           </TabsContent>
         </Tabs>
       </main>
