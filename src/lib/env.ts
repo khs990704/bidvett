@@ -18,9 +18,9 @@ const publicEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
   NEXT_PUBLIC_APP_URL: z.string().url(),
   // Dodo Payments — hosted-redirect flow, so no publishable key is shipped.
-  NEXT_PUBLIC_DODO_PRODUCT_SINGLE: z.string().min(1).optional(),
-  NEXT_PUBLIC_DODO_PRODUCT_WEEKLY: z.string().min(1).optional(),
-  NEXT_PUBLIC_DODO_PRODUCT_MONTHLY: z.string().min(1).optional(),
+  NEXT_PUBLIC_DODO_PRICE_SINGLE: z.string().min(1).optional(),
+  NEXT_PUBLIC_DODO_PRICE_WEEKLY: z.string().min(1).optional(),
+  NEXT_PUBLIC_DODO_PRICE_MONTHLY: z.string().min(1).optional(),
   NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
 });
 
@@ -28,9 +28,9 @@ export const publicEnv = publicEnvSchema.parse({
   NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
-  NEXT_PUBLIC_DODO_PRODUCT_SINGLE: process.env.NEXT_PUBLIC_DODO_PRODUCT_SINGLE,
-  NEXT_PUBLIC_DODO_PRODUCT_WEEKLY: process.env.NEXT_PUBLIC_DODO_PRODUCT_WEEKLY,
-  NEXT_PUBLIC_DODO_PRODUCT_MONTHLY: process.env.NEXT_PUBLIC_DODO_PRODUCT_MONTHLY,
+  NEXT_PUBLIC_DODO_PRICE_SINGLE: process.env.NEXT_PUBLIC_DODO_PRICE_SINGLE,
+  NEXT_PUBLIC_DODO_PRICE_WEEKLY: process.env.NEXT_PUBLIC_DODO_PRICE_WEEKLY,
+  NEXT_PUBLIC_DODO_PRICE_MONTHLY: process.env.NEXT_PUBLIC_DODO_PRICE_MONTHLY,
   NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
 });
 

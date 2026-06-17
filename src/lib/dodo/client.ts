@@ -23,9 +23,9 @@ export function dodoClient(): DodoPayments {
 }
 
 const PLAN_PRODUCT_ENV: Record<PlanCode, string> = {
-  credit_single: 'NEXT_PUBLIC_DODO_PRODUCT_SINGLE',
-  weekly_pass: 'NEXT_PUBLIC_DODO_PRODUCT_WEEKLY',
-  monthly_sub: 'NEXT_PUBLIC_DODO_PRODUCT_MONTHLY',
+  credit_single: 'NEXT_PUBLIC_DODO_PRICE_SINGLE',
+  weekly_pass: 'NEXT_PUBLIC_DODO_PRICE_WEEKLY',
+  monthly_sub: 'NEXT_PUBLIC_DODO_PRICE_MONTHLY',
 };
 
 export interface CreateCheckoutArgs {
