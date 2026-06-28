@@ -50,10 +50,12 @@ export interface ProfileUpdateRequest {
 // ── 3.5 POST /api/analyze ─────────────────────────────────────────────────
 export interface AnalyzeRequest {
   job_text: string;
+  job_title?: string | null;
 }
 
 export interface AnalyzeResponse {
   analysis_id: string;
+  job_title: string | null;
   verdict: Verdict;
   backend_risk: {
     critical: boolean;
@@ -80,6 +82,7 @@ export interface AnalyzeResponse {
 // ── 3.6 GET /api/analyses ─────────────────────────────────────────────────
 export interface AnalysesListItem {
   id: string;
+  job_title: string | null;
   verdict: Verdict;
   risk_level: RiskLevel;
   match_score: number | null;

@@ -71,3 +71,6 @@ supabase/.env
 # (no explicit rules added — none of the above patterns match them)
 .vercel
 .env*
+
+AGENTS.md
+RTK.md

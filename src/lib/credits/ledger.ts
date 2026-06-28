@@ -111,6 +111,7 @@ export interface RpcParams {
   p_output_tokens: number;
   p_took_ms: number;
   p_job_text_hash: string;
+  p_job_title: string | null;
 }
 
 export interface RpcRow {

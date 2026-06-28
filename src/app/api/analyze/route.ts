@@ -45,6 +45,7 @@ import {
 import { evaluate } from '@/lib/risk-engine/rules';
 import { finalizeScore } from '@/lib/risk-engine/score';
 import { preCheckCredits, recordAnalysisAndDeduct } from '@/lib/credits/ledger';
+import { extractUpworkJobTitle } from '@/lib/extractors/upwork';
 import type { AnalyzeResponse } from '@/lib/types/api';
 
 export const runtime = 'nodejs';
@@ -52,6 +53,7 @@ export const dynamic = 'force-dynamic';
 
 const BodySchema = z.object({
   job_text: z.string().min(50).max(64_000),
+  job_title: z.string().max(160).nullable().optional(),
 });
 
 const SCAM_TIP = 'Skip this job and report it to Upwork TOS team.';
@@ -62,6 +64,15 @@ const LLM_CHAR_CAP = 16_000;
 
 function sha256Hex(input: string): string {
   return createHash('sha256').update(input, 'utf8').digest('hex');
+}
+
+function sanitizeJobTitle(input: string | null | undefined): string | null {
+  if (!input) return null;
+  const title = input
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s:|-]+|[\s:|-]+$/g, '')
+    .trim();
+  return title.length >= 4 ? title.slice(0, 160) : null;
 }
 
 function buildUserMessage(args: {
@@ -123,6 +134,8 @@ export const POST = withErrorHandling(async (req: Request) => {
     });
   }
   const jobText = parsed.data.job_text;
+  const jobTitle =
+    sanitizeJobTitle(parsed.data.job_title) ?? extractUpworkJobTitle(jobText);
   if (jobText.length > HTTP_CHAR_CAP) {
     throw new ApiError(413, ErrorCode.INPUT_TOO_LARGE, {
       length: jobText.length,
@@ -257,6 +270,7 @@ export const POST = withErrorHandling(async (req: Request) => {
       p_output_tokens: llm.usage.completion_tokens,
       p_took_ms: tookMs,
       p_job_text_hash: jobHash,
+      p_job_title: jobTitle,
     });
 
     if (!rpc.ok) {
@@ -269,6 +283,7 @@ export const POST = withErrorHandling(async (req: Request) => {
     // 13) Build response
     const response: AnalyzeResponse = {
       analysis_id: rpc.row.analysis_id,
+      job_title: jobTitle,
       verdict: finalized.verdict,
       backend_risk: {
         critical: rule.critical,

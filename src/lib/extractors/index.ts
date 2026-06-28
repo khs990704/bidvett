@@ -1,1 +1,1 @@
-export { extractUpworkCoreText } from "./upwork";
+export { extractUpworkCoreText, extractUpworkJobTitle } from "./upwork";

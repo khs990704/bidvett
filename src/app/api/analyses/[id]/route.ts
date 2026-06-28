@@ -53,6 +53,7 @@ export const GET = withErrorHandling(
     const signals = (data.extracted_signals ?? {}) as ExtractedSignals;
     const response: AnalyzeResponse = {
       analysis_id: data.id,
+      job_title: data.job_title ?? null,
       verdict: data.verdict,
       backend_risk: {
         critical: data.backend_critical,

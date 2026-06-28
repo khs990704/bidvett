@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "@/components/ui/sonner";
 
 import { analyzeJob, ApiError } from "@/lib/api";
-import { extractUpworkCoreText } from "@/lib/extractors/upwork";
+import { extractUpworkCoreText, extractUpworkJobTitle } from "@/lib/extractors/upwork";
 import { ReportModal } from "./ReportModal";
 import type { AnalyzeResponse } from "@/lib/types/api";
 
@@ -46,9 +46,10 @@ export function PasteAnalyzer({ onAnalyzed }: Props) {
 
     setBusy(true);
     const idemKey = crypto.randomUUID();
+    const jobTitle = extractUpworkJobTitle(raw);
     try {
       const res = await analyzeJob(
-        { job_text: cleaned },
+        { job_text: cleaned, job_title: jobTitle },
         { idempotencyKey: idemKey },
       );
       setReport(res);

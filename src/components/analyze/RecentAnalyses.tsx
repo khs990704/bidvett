@@ -72,20 +72,16 @@ export function RecentAnalyses({ reloadKey = 0, limit = 5 }: Props) {
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <RiskBadge riskLevel={it.risk_level} verdict={it.verdict} />
-                    <span className="text-sm">
-                      {it.verdict === "DO_NOT_APPLY" ? (
-                        <span className="text-destructive font-medium">BLOCKED</span>
-                      ) : it.match_score !== null ? (
-                        <>
-                          Match{" "}
-                          <span className="font-mono font-semibold">
-                            {it.match_score}
-                          </span>
-                        </>
-                      ) : (
-                        "—"
-                      )}
-                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">
+                        {it.job_title ?? analysisSummary(it)}
+                      </p>
+                      {it.job_title ? (
+                        <p className="text-xs text-muted-foreground">
+                          {analysisSummary(it)}
+                        </p>
+                      ) : null}
+                    </div>
                     {it.is_reported ? (
                       <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                         <Flag className="h-3 w-3" /> reported
@@ -112,4 +108,10 @@ function formatTs(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+function analysisSummary(it: AnalysesListItem): string {
+  if (it.verdict === "DO_NOT_APPLY") return "BLOCKED";
+  if (it.match_score !== null) return `Match ${it.match_score}`;
+  return "Analysis";
 }

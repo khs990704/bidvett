@@ -33,7 +33,7 @@ export const GET = withErrorHandling(async (req: Request) => {
   const supabase = await createSupabaseServerClient();
   let query = supabase
     .from('analyses')
-    .select('id, verdict, ai_risk_level, match_score, is_reported, created_at')
+    .select('id, job_title, verdict, ai_risk_level, match_score, is_reported, created_at')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
@@ -55,6 +55,7 @@ export const GET = withErrorHandling(async (req: Request) => {
   const page = hasMore ? rows.slice(0, limit) : rows;
   const items: AnalysesListItem[] = page.map((r) => ({
     id: r.id as string,
+    job_title: (r.job_title as string | null) ?? null,
     verdict: r.verdict as AnalysesListItem['verdict'],
     risk_level: r.ai_risk_level as AnalysesListItem['risk_level'],
     match_score: (r.match_score as number | null) ?? null,

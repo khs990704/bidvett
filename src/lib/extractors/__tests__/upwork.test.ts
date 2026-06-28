@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { extractUpworkCoreText } from "../upwork";
+import { extractUpworkCoreText, extractUpworkJobTitle } from "../upwork";
 
 const FIXTURE_PATH = path.resolve(
   __dirname,
@@ -66,5 +66,42 @@ describe("extractUpworkCoreText — spec/02 §3.3.4 T1~T6", () => {
     const out = extractUpworkCoreText(input);
     expect(out.toUpperCase().startsWith("BACK TO JOB POST")).toBe(true);
     expect(out).not.toContain("Header garbage");
+  });
+});
+
+describe("extractUpworkJobTitle", () => {
+  it("extracts the title from the Upwork breadcrumb in the golden fixture", () => {
+    expect(extractUpworkJobTitle(goldenFixture)).toBe(
+      "React Developer for AI SaaS Platform Integration",
+    );
+  });
+
+  it("extracts the title after Job details when breadcrumb is absent", () => {
+    const input = [
+      "Find Work Deliver Work",
+      "Job details",
+      "Senior Next.js Engineer for SaaS Dashboard",
+      "Posted 1 hour ago",
+      "Worldwide",
+      "Job Description:",
+      "Build a product dashboard.",
+    ].join("\n");
+
+    expect(extractUpworkJobTitle(input)).toBe(
+      "Senior Next.js Engineer for SaaS Dashboard",
+    );
+  });
+
+  it("falls back to compact preprocessed text", () => {
+    const input =
+      "Job details UX Designer for Fintech Landing Page Posted 2 hours ago Worldwide Job Description: Need help.";
+
+    expect(extractUpworkJobTitle(input)).toBe(
+      "UX Designer for Fintech Landing Page",
+    );
+  });
+
+  it("returns null when no Upwork title marker is present", () => {
+    expect(extractUpworkJobTitle("Plain description without page markers.")).toBeNull();
   });
 });

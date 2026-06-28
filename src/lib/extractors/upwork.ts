@@ -43,3 +43,71 @@ export function extractUpworkCoreText(rawText: string): string {
 
   return cleanText.trim();
 }
+
+const TITLE_MAX_LENGTH = 160;
+
+const TITLE_STOP_WORDS = [
+  "Posted",
+  "Job Description",
+  "Hourly",
+  "Fixed-price",
+  "Est. Budget",
+  "Budget",
+  "Worldwide",
+  "Experience Level",
+  "Project Length",
+];
+
+function normalizeTitle(candidate: string): string | null {
+  const title = candidate
+    .replace(/\s+/g, " ")
+    .replace(/^[\s:|-]+|[\s:|-]+$/g, "")
+    .trim();
+
+  if (title.length < 4) return null;
+  if (/^(job details|job description|back to job post|posted|worldwide)$/i.test(title)) {
+    return null;
+  }
+
+  return title.slice(0, TITLE_MAX_LENGTH);
+}
+
+export function extractUpworkJobTitle(rawText: string): string | null {
+  if (!rawText) return null;
+
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  const breadcrumb = lines.find((line) => /Home\s*\/\s*Find Work\s*\//i.test(line));
+  if (breadcrumb) {
+    const parts = breadcrumb.split("/").map((part) => part.trim()).filter(Boolean);
+    const title = normalizeTitle(parts[parts.length - 1] ?? "");
+    if (title) return title;
+  }
+
+  const markerIndex = lines.findIndex((line) =>
+    /^(Job details|Back to job post)$/i.test(line),
+  );
+  if (markerIndex >= 0) {
+    for (const line of lines.slice(markerIndex + 1, markerIndex + 5)) {
+      const title = normalizeTitle(line);
+      if (title) return title;
+    }
+  }
+
+  const compact = rawText.replace(/\s+/g, " ").trim();
+  const markerMatch = compact.match(
+    new RegExp(
+      `(?:Job details|Back to job post)\\s+(.+?)\\s+(?:${TITLE_STOP_WORDS.join("|")})`,
+      "i",
+    ),
+  );
+  if (markerMatch?.[1]) {
+    const title = normalizeTitle(markerMatch[1]);
+    if (title) return title;
+  }
+
+  return null;
+}
