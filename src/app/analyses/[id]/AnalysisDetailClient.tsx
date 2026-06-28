@@ -61,6 +61,8 @@ export function AnalysisDetailClient({ id }: Props) {
     );
   }
 
+  const displayTitle = report.job_title ?? `Analysis ${id}`;
+
   return (
     <>
       <div className="mb-4 flex items-center justify-between">
@@ -74,7 +76,10 @@ export function AnalysisDetailClient({ id }: Props) {
       <Card>
         <CardContent className="pt-6">
           <p className="text-sm text-muted-foreground">
-            Analysis <span className="font-mono">{id}</span> —{" "}
+            <span className={report.job_title ? "font-medium text-foreground" : "font-mono"}>
+              {displayTitle}
+            </span>{" "}
+            —{" "}
             <button
               type="button"
               className="underline"
