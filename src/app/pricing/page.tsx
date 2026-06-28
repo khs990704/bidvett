@@ -59,7 +59,7 @@ export default async function PricingPage() {
             Plans that match your application rhythm
           </h1>
           <p className="mt-3 text-muted-foreground">
-            Sign up gets you 3 free analyses. Upgrade only when you need it.
+            Sign up gets you 5 free analyses. Upgrade only when you need it.
           </p>
         </header>
 

@@ -37,7 +37,7 @@ export default function LandingPage() {
           </div>
           <ul className="mt-6 flex flex-col sm:flex-row justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
             <li className="inline-flex items-center gap-1.5">
-              <CheckCircle2 className="h-4 w-4 text-success" /> 3 free
+              <CheckCircle2 className="h-4 w-4 text-success" /> 5 free
               analyses on signup
             </li>
             <li className="inline-flex items-center gap-1.5">
