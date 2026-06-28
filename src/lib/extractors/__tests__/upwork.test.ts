@@ -101,6 +101,30 @@ describe("extractUpworkJobTitle", () => {
     );
   });
 
+  it("extracts the title when it appears before Posted and Job details", () => {
+    const input = [
+      "Find Work Deliver Work",
+      "Senior React Developer for Dashboard Fixes",
+      "Posted 17 minutes ago",
+      "Worldwide",
+      "Job details",
+      "Hourly",
+      "Job Description:",
+      "Need help fixing a dashboard.",
+    ].join("\n");
+
+    expect(extractUpworkJobTitle(input)).toBe(
+      "Senior React Developer for Dashboard Fixes",
+    );
+  });
+
+  it("extracts a title before Posted from compact text", () => {
+    const input =
+      "Find Work Search for Jobs Senior WordPress Plugin Developer Posted 1 hour ago Worldwide Job details Fixed-price";
+
+    expect(extractUpworkJobTitle(input)).toBe("Senior WordPress Plugin Developer");
+  });
+
   it("returns null when no Upwork title marker is present", () => {
     expect(extractUpworkJobTitle("Plain description without page markers.")).toBeNull();
   });

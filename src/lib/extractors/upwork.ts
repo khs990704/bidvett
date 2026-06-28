@@ -87,6 +87,14 @@ export function extractUpworkJobTitle(rawText: string): string | null {
     if (title) return title;
   }
 
+  const postedIndex = lines.findIndex((line) => /^Posted\b/i.test(line));
+  if (postedIndex > 0) {
+    for (let i = postedIndex - 1; i >= Math.max(0, postedIndex - 4); i--) {
+      const title = normalizeTitle(lines[i]);
+      if (title) return title;
+    }
+  }
+
   const markerIndex = lines.findIndex((line) =>
     /^(Job details|Back to job post)$/i.test(line),
   );
@@ -106,6 +114,17 @@ export function extractUpworkJobTitle(rawText: string): string | null {
   );
   if (markerMatch?.[1]) {
     const title = normalizeTitle(markerMatch[1]);
+    if (title) return title;
+  }
+
+  const postedMatch = compact.match(
+    new RegExp(`(?:^|\\s)(.{4,${TITLE_MAX_LENGTH}}?)\\s+Posted\\b`, "i"),
+  );
+  if (postedMatch?.[1]) {
+    const candidate = postedMatch[1]
+      .split(/\s(?:Find Work|Search for Jobs|Home\s*\/)/i)
+      .pop();
+    const title = normalizeTitle(candidate ?? postedMatch[1]);
     if (title) return title;
   }
 
