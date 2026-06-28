@@ -17,6 +17,20 @@ export const dynamic = 'force-dynamic';
 
 const ParamsSchema = z.object({ id: z.string().uuid() });
 
+function normalizeSignals(input: unknown): ExtractedSignals {
+  const raw = (input ?? {}) as Partial<ExtractedSignals>;
+  return {
+    client_hire_rate: raw.client_hire_rate ?? 0,
+    client_hire_rate_found: raw.client_hire_rate_found ?? 'client_hire_rate' in raw,
+    payment_verified: raw.payment_verified ?? false,
+    payment_verified_found: raw.payment_verified_found ?? 'payment_verified' in raw,
+    total_spend_amount: raw.total_spend_amount ?? 0,
+    total_spend_found: raw.total_spend_found ?? 'total_spend_amount' in raw,
+    client_rating: raw.client_rating ?? 0,
+    client_rating_found: raw.client_rating_found ?? 'client_rating' in raw,
+  };
+}
+
 export const GET = withErrorHandling(
   async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
     const ip = clientIpFromHeaders(req.headers);
@@ -50,7 +64,7 @@ export const GET = withErrorHandling(
       throw new ApiError(403, ErrorCode.FORBIDDEN);
     }
 
-    const signals = (data.extracted_signals ?? {}) as ExtractedSignals;
+    const signals = normalizeSignals(data.extracted_signals);
     const response: AnalyzeResponse = {
       analysis_id: data.id,
       job_title: data.job_title ?? null,
@@ -67,6 +81,8 @@ export const GET = withErrorHandling(
       score_reason: data.score_reason ?? null,
       action_tip: data.action_tip,
       extracted_signals: signals,
+      evidence_quotes: (data.evidence_quotes ?? []) as string[],
+      reasoning_bullets: (data.reasoning_bullets ?? []) as string[],
       credit_after: 0, // historical snapshot — not meaningful for past rows
       took_ms: data.took_ms ?? 0,
       prompt_version: data.prompt_version ?? 1,

@@ -14,9 +14,13 @@ import { evaluate, type QuantSignals } from "../rules";
 function q(overrides: Partial<QuantSignals> = {}): QuantSignals {
   return {
     client_hire_rate: 80,
+    client_hire_rate_found: true,
     payment_verified: true,
+    payment_verified_found: true,
     total_spend_amount: 5_000,
+    total_spend_found: true,
     client_rating: 4.8,
+    client_rating_found: true,
     ...overrides,
   };
 }
@@ -46,6 +50,11 @@ describe("risk-engine/rules.evaluate — single-rule triggers", () => {
     );
   });
 
+  it("LOW_HIRE_RATE does NOT fire when hire rate was not found", () => {
+    const r = evaluate(q({ client_hire_rate: 0, client_hire_rate_found: false }));
+    expect(r.rules_triggered).not.toContain("LOW_HIRE_RATE");
+  });
+
   it("PAYMENT_UNVERIFIED_ZERO_SPEND fires only with both flags", () => {
     const r = evaluate(
       q({ payment_verified: false, total_spend_amount: 0 }),
@@ -64,6 +73,28 @@ describe("risk-engine/rules.evaluate — single-rule triggers", () => {
       q({ payment_verified: false, total_spend_amount: 1 }),
     );
     expect(r.rules_triggered).not.toContain("PAYMENT_UNVERIFIED_ZERO_SPEND");
+  });
+
+  it("PAYMENT_UNVERIFIED_ZERO_SPEND does NOT fire when payment or spend is unknown", () => {
+    expect(
+      evaluate(
+        q({
+          payment_verified: false,
+          payment_verified_found: false,
+          total_spend_amount: 0,
+        }),
+      ).rules_triggered,
+    ).not.toContain("PAYMENT_UNVERIFIED_ZERO_SPEND");
+
+    expect(
+      evaluate(
+        q({
+          payment_verified: false,
+          total_spend_amount: 0,
+          total_spend_found: false,
+        }),
+      ).rules_triggered,
+    ).not.toContain("PAYMENT_UNVERIFIED_ZERO_SPEND");
   });
 
   it("LOW_RATING fires when client_rating > 0 AND <= 3.5", () => {
@@ -93,6 +124,11 @@ describe("risk-engine/rules.evaluate — single-rule triggers", () => {
     expect(evaluate(q({ client_rating: 5.0 })).rules_triggered).not.toContain(
       "LOW_RATING",
     );
+  });
+
+  it("LOW_RATING does NOT fire when rating was not found", () => {
+    const r = evaluate(q({ client_rating: 0, client_rating_found: false }));
+    expect(r.rules_triggered).not.toContain("LOW_RATING");
   });
 });
 

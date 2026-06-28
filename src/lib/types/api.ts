@@ -70,10 +70,16 @@ export interface AnalyzeResponse {
   action_tip: string;
   extracted_signals: {
     client_hire_rate: number;
+    client_hire_rate_found: boolean;
     payment_verified: boolean;
+    payment_verified_found: boolean;
     total_spend_amount: number;
+    total_spend_found: boolean;
     client_rating: number;
+    client_rating_found: boolean;
   };
+  evidence_quotes: string[];
+  reasoning_bullets: string[];
   credit_after: number;
   took_ms: number;
   prompt_version: number;

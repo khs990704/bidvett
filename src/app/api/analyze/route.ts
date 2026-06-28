@@ -75,6 +75,14 @@ function sanitizeJobTitle(input: string | null | undefined): string | null {
   return title.length >= 4 ? title.slice(0, 160) : null;
 }
 
+function sanitizeStringList(items: string[], maxItems: number, maxChars: number): string[] {
+  return items
+    .map((item) => item.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(0, maxItems)
+    .map((item) => item.slice(0, maxChars));
+}
+
 function buildUserMessage(args: {
   profile: {
     skills: string[];
@@ -234,9 +242,13 @@ export const POST = withErrorHandling(async (req: Request) => {
     // 11) Rule engine + score finalize
     const quant = {
       client_hire_rate: llm.data.client_hire_rate,
+      client_hire_rate_found: llm.data.client_hire_rate_found,
       payment_verified: llm.data.payment_verified,
+      payment_verified_found: llm.data.payment_verified_found,
       total_spend_amount: llm.data.total_spend_amount,
+      total_spend_found: llm.data.total_spend_found,
       client_rating: llm.data.client_rating,
+      client_rating_found: llm.data.client_rating_found,
     };
     const rule = evaluate(quant);
     const finalized = finalizeScore({
@@ -249,6 +261,9 @@ export const POST = withErrorHandling(async (req: Request) => {
       rule.critical || llm.data.risk_level === 'DANGER'
         ? SCAM_TIP
         : llm.data.action_tip;
+    const contextualRedFlags = sanitizeStringList(llm.data.contextual_red_flags, 8, 220);
+    const evidenceQuotes = sanitizeStringList(llm.data.evidence_quotes, 5, 160);
+    const reasoningBullets = sanitizeStringList(llm.data.reasoning_bullets, 5, 220);
 
     const tookMs = Date.now() - t0;
     const jobHash = sha256Hex(jobText);
@@ -260,11 +275,13 @@ export const POST = withErrorHandling(async (req: Request) => {
       p_backend_critical: rule.critical,
       p_backend_rules_triggered: rule.rules_triggered,
       p_ai_risk_level: llm.data.risk_level,
-      p_contextual_red_flags: llm.data.contextual_red_flags,
+      p_contextual_red_flags: contextualRedFlags,
       p_match_score: finalized.match_score,
       p_score_reason: finalized.verdict === 'DO_NOT_APPLY' ? null : llm.data.score_reason,
       p_action_tip: actionTip,
       p_extracted_signals: quant,
+      p_evidence_quotes: evidenceQuotes,
+      p_reasoning_bullets: reasoningBullets,
       p_prompt_version: prompt.version,
       p_input_tokens: llm.usage.prompt_tokens,
       p_output_tokens: llm.usage.completion_tokens,
@@ -291,12 +308,14 @@ export const POST = withErrorHandling(async (req: Request) => {
       },
       ai_risk: {
         risk_level: llm.data.risk_level,
-        contextual_red_flags: llm.data.contextual_red_flags,
+        contextual_red_flags: contextualRedFlags,
       },
       match_score: finalized.match_score,
       score_reason: finalized.verdict === 'DO_NOT_APPLY' ? null : llm.data.score_reason,
       action_tip: actionTip,
       extracted_signals: quant,
+      evidence_quotes: evidenceQuotes,
+      reasoning_bullets: reasoningBullets,
       credit_after: rpc.row.balance_after,
       took_ms: tookMs,
       prompt_version: prompt.version,

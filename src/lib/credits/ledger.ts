@@ -106,6 +106,8 @@ export interface RpcParams {
   p_score_reason: string | null;
   p_action_tip: string;
   p_extracted_signals: Record<string, unknown>;
+  p_evidence_quotes: string[];
+  p_reasoning_bullets: string[];
   p_prompt_version: number;
   p_input_tokens: number;
   p_output_tokens: number;

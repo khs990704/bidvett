@@ -116,6 +116,7 @@ function SafeView({
           </div>
         ) : null}
 
+        <Evidence report={report} />
         <ExtractedSignals report={report} />
       </div>
 
@@ -188,6 +189,7 @@ function RiskView({
           </div>
         ) : null}
 
+        <Evidence report={report} />
         <ExtractedSignals report={report} />
       </div>
 
@@ -206,10 +208,63 @@ function ExtractedSignals({ report }: { report: AnalyzeResponse }) {
   const s = report.extracted_signals;
   return (
     <div className="rounded-md border bg-muted/30 p-3 text-xs grid grid-cols-2 sm:grid-cols-4 gap-2">
-      <KV k="Hire rate" v={`${s.client_hire_rate}%`} />
-      <KV k="Payment" v={s.payment_verified ? "verified" : "unverified"} />
-      <KV k="Total spend" v={`$${s.total_spend_amount.toLocaleString()}`} />
-      <KV k="Rating" v={`${s.client_rating.toFixed(2)} / 5`} />
+      <KV
+        k="Hire rate"
+        v={s.client_hire_rate_found ? `${s.client_hire_rate}%` : "unknown"}
+      />
+      <KV
+        k="Payment"
+        v={
+          s.payment_verified_found
+            ? s.payment_verified
+              ? "verified"
+              : "unverified"
+            : "unknown"
+        }
+      />
+      <KV
+        k="Total spend"
+        v={
+          s.total_spend_found
+            ? `$${s.total_spend_amount.toLocaleString()}`
+            : "unknown"
+        }
+      />
+      <KV
+        k="Rating"
+        v={s.client_rating_found ? `${s.client_rating.toFixed(2)} / 5` : "unknown"}
+      />
+    </div>
+  );
+}
+
+function Evidence({ report }: { report: AnalyzeResponse }) {
+  const hasEvidence = report.evidence_quotes.length > 0;
+  const hasReasoning = report.reasoning_bullets.length > 0;
+  if (!hasEvidence && !hasReasoning) return null;
+
+  return (
+    <div className="rounded-md border bg-background p-3 text-sm space-y-3">
+      {hasReasoning ? (
+        <div>
+          <h4 className="text-sm font-medium mb-1">Analysis notes</h4>
+          <ul className="list-disc pl-5 text-muted-foreground space-y-1">
+            {report.reasoning_bullets.map((item, i) => (
+              <li key={i}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {hasEvidence ? (
+        <div>
+          <h4 className="text-sm font-medium mb-1">Evidence from paste</h4>
+          <ul className="list-disc pl-5 text-muted-foreground space-y-1">
+            {report.evidence_quotes.map((quote, i) => (
+              <li key={i}>{quote}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }
