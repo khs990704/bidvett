@@ -1,8 +1,8 @@
-# 04_test_plan.md — ConnectSaver QA 전략 확정본
+# 04_test_plan.md — BidVett QA 전략 확정본
 
 > [PIVOT-01 rev2 — 2026-05-29] 결제 webhook 테스트가 Stripe → Dodo Standard Webhooks로 전환되었다. §2 NFR-8, §3.4 표(P1~P15), §8 통합 테스트 파일명, §7.2 수동 점검 항목을 갱신했다. 결정 매트릭스는 `_workspace/00_input.md §11`.
 > 상위 문서: `_workspace/00_input.md`, `_workspace/01_architecture.md`, `_workspace/02_api_spec.md`, `_workspace/03_db_schema.md`
-> 본 문서는 ConnectSaver MVP의 테스트 전략·자동화 코드·수동 체크리스트·성능 SLO 검증을 단일 문서로 정의한다.
+> 본 문서는 BidVett MVP의 테스트 전략·자동화 코드·수동 체크리스트·성능 SLO 검증을 단일 문서로 정의한다.
 > 상충 시 우선순위: **본 문서 > spec/06 §QA > spec/02 §3.3.4**.
 
 ---
@@ -149,7 +149,7 @@
 set -euo pipefail
 JOB_TEXT=$(jq -Rs . < tests/fixtures/upwork-sample.txt)
 TOKEN="$SUPABASE_TEST_USER_JWT"     # 사전 발급
-URL="${PERF_BASE_URL:-https://app.connectsaver.com}/api/analyze"
+URL="${PERF_BASE_URL:-https://app.bidvett.com}/api/analyze"
 
 mkdir -p .perf
 > .perf/timings.txt

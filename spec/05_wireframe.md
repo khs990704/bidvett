@@ -1,4 +1,4 @@
-# 화면 설계 / 와이어프레임 — ConnectSaver
+# 화면 설계 / 와이어프레임 — BidVett
 
 > [PIVOT-01 rev2 — 2026-05-29] Pricing CTA / Account Billing / 결제 플로우 라벨을 Dodo Payments 기준으로 갱신했다. 결정 매트릭스는 `_workspace/00_input.md §11`.
 > All user-facing copy is English (Q5).
@@ -27,7 +27,7 @@
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│ [ConnectSaver]                       Pricing · Login           │
+│ [BidVett]                       Pricing · Login           │
 ├────────────────────────────────────────────────────────────────┤
 │                                                                │
 │   STOP WASTING CONNECTS ON GHOST JOBS.                         │
@@ -67,7 +67,7 @@
 
 ```
 ┌────────────────────────────────────────┐
-│       Welcome back to ConnectSaver     │
+│       Welcome back to BidVett     │
 │                                        │
 │      [ G Continue with Google ]        │
 │                                        │
@@ -101,7 +101,7 @@
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│ ConnectSaver        Dashboard   History   Pricing   [Avatar▾]  │
+│ BidVett        Dashboard   History   Pricing   [Avatar▾]  │
 ├────────────────────────────────────────────────────────────────┤
 │  Credits: 2 left          Weekly Pass: — none                  │
 │  [Buy more]                                                    │

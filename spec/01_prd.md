@@ -1,4 +1,4 @@
-# PRD — ConnectSaver (Upwork 공고 이중 리스크 스크리닝 SaaS)
+# PRD — BidVett (Upwork 공고 이중 리스크 스크리닝 SaaS)
 
 > [PIVOT-01 rev2 — 2026-05-29] Payment provider 변경: Stripe → Dodo Payments. 자세한 결정 매트릭스는 `_workspace/00_input.md §11` 참조. 비즈니스 모델/가격/환불 정책은 불변.
 > Last updated: 2026-05-29 (rev 2)

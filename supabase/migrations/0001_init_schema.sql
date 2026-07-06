@@ -1,4 +1,4 @@
--- 0001_init_schema.sql — ConnectSaver core tables
+-- 0001_init_schema.sql — BidVett core tables
 -- Source: _workspace/03_db_schema.md §3
 -- PostgreSQL 15 + Supabase. Apply via `supabase db push`.
 

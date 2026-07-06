@@ -1,4 +1,4 @@
-# 개발 일정 및 마일스톤 — ConnectSaver
+# 개발 일정 및 마일스톤 — BidVett
 
 > [PIVOT-01 rev2 — 2026-05-29] 결제 인프라가 Dodo Payments로 전환되었다. 일정/스코프는 동일. 마일스톤 표·칸반·기술 부채 표에서 Stripe 언급을 Dodo Payments로 갱신했고 TD-7(Stripe Tax)은 MoR 자동 처리로 종결 표시. 결정 매트릭스는 `_workspace/00_input.md §11`.
 > Reference: `idea.md §6` 1~2주 차 랜딩 페이지 + 결제 + Supabase 첫날 연동, 3~4주 차 Reddit 트래픽, 5주차+ 구독 확장 → MVP 일정과 정렬.

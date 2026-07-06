@@ -3,7 +3,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
-  title: "ConnectSaver — Stop wasting Upwork Connects on ghost jobs",
+  title: "BidVett — Stop wasting Upwork Connects on ghost jobs",
   description:
     "Paste a job. Get a 3-second double-risk verdict + match score. Built for Upwork freelancers.",
 };

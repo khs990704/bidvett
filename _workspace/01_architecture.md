@@ -1,4 +1,4 @@
-# 01_architecture.md — ConnectSaver 시스템 아키텍처 확정본
+# 01_architecture.md — BidVett 시스템 아키텍처 확정본
 
 > [PIVOT-01 rev2 — 2026-05-29] 결제 인프라 Stripe → Dodo Payments. §0 변경 메모, §4 다이어그램, §5 디렉토리, §6.7, §7.2, §8.4, §9, §10, §11, §12, §13 모두 갱신. 결정 매트릭스는 `_workspace/00_input.md §11`.
 > 상위 문서: `_workspace/00_input.md`
@@ -23,7 +23,7 @@
 
 ## 1. 프로젝트 개요
 
-- **프로젝트명**: ConnectSaver
+- **프로젝트명**: BidVett
 - **한 줄 요약**: Upwork 공고 이중 리스크 스크리닝 SaaS (정량 Rule Engine + 정성 LLM)
 - **타깃 사용자**: Upwork 글로벌 1~5년 차 프리랜서 (자세한 페르소나는 `spec/01_prd.md` §1)
 - **프로젝트 규모**: 소규모 (MVP, 1인 풀스택 + Vercel + Supabase 단일 저장소)
@@ -540,7 +540,7 @@ function callOpenAIWithRetry(req):
 | `SENTRY_DSN` | Sentry DSN (server+client 동일) | Server + `NEXT_PUBLIC_SENTRY_DSN`로 client 별도 노출 | Sentry Project |
 | `NEXT_PUBLIC_SENTRY_DSN` | Client Sentry | Client | 동일 값 OK |
 | `SYSTEM_PROMPT_VERSION` | DB 조회 실패 시 fallback version | Server-only | 배포 시 `1` 고정 |
-| `NEXT_PUBLIC_APP_URL` | OAuth redirect + Dodo Hosted Checkout success_url | Client | 환경별 (e.g. `https://app.connectsaver.com`) |
+| `NEXT_PUBLIC_APP_URL` | OAuth redirect + Dodo Hosted Checkout success_url | Client | 환경별 (e.g. `https://app.bidvett.com`) |
 
 **Email/SMTP 변수**: MVP 미도입 → v1.0 Week 3 진입 시 `RESEND_API_KEY` 추가 검토.
 

@@ -1,4 +1,4 @@
-# 00_input.md — ConnectSaver
+# 00_input.md — BidVett
 
 > 사용자 입력 + idea_inquiry.md (LGTM) + spec/ (FROZEN 2026-05-27) 통합 정리.
 > 후속 에이전트(architect/frontend/backend/devops/qa)가 _workspace/ 작성/구현 시 1차 참조 문서.
@@ -8,7 +8,7 @@
 
 ## 0. 메타
 
-- **프로젝트명**: ConnectSaver
+- **프로젝트명**: BidVett
 - **실행 모드**: Full Pipeline (5 agents)
 - **배포 대상**: Vercel (Frontend + API) + Supabase Cloud
 - **언어/로케일**: English-only (Q5)

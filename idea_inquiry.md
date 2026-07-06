@@ -1,10 +1,10 @@
 ---
-name: ConnectSaver Idea Inquiry
+name: BidVett Idea Inquiry
 description: Upwork 프리랜서용 공고 리스크 스크리닝 SaaS 아이디어 구체화 문서
 type: project
 ---
 
-# Idea Inquiry — ConnectSaver (Upwork 공고 이중 리스크 스크리닝 SaaS)
+# Idea Inquiry — BidVett (Upwork 공고 이중 리스크 스크리닝 SaaS)
 
 > 최종 업데이트: 2026-05-27
 > 상태: ✅ LGTM — 다음 단계 진입 가능 (Q1~Q6 모두 확정)
@@ -25,7 +25,7 @@ Upwork 프리랜서가 Connects(지원 토큰)를 낭비하지 않도록, 공고
 
 - **핵심**: Upwork 글로벌 1~5년 차 주니어/미드 레벨 프리랜서
 - **확장**: 공고 분석 시간이 부족한 Top Rated 고단가 프리랜서
-- **사용 맥락**: Upwork 탐색 중 공고 발견 → 페이지 복사 → ConnectSaver에 붙여넣기 → 3초 내 리포트 확인 → 지원/포기 결정
+- **사용 맥락**: Upwork 탐색 중 공고 발견 → 페이지 복사 → BidVett에 붙여넣기 → 3초 내 리포트 확인 → 지원/포기 결정
 
 ## 확정된 핵심 기능
 

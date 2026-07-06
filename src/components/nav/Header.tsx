@@ -21,7 +21,7 @@ export async function Header({ variant = "app" }: HeaderProps) {
           className="flex items-center gap-2 font-semibold tracking-tight"
         >
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-primary" />
-          ConnectSaver
+          BidVett
         </Link>
 
         <nav className="flex items-center gap-1 sm:gap-3 text-sm">

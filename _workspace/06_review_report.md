@@ -1,4 +1,4 @@
-# 06_review_report.md — ConnectSaver 최종 코드 리뷰 & QA 보고서
+# 06_review_report.md — BidVett 최종 코드 리뷰 & QA 보고서
 
 > [PIVOT-01 rev2 — 2026-05-29] 결제 인프라 Stripe → Dodo Payments. 결제 관련 보안/신뢰성 섹션 (§1 Spec 일치성, §2 SEC-2 ~ SEC-6, §3 Stripe webhook → Dodo webhook, §7 잔여 TBD #6, §8 정합성)을 갱신했다. SEC-1 (IP rate-limit) 및 코어 분석 파이프라인 평가는 결제 인프라와 무관하므로 그대로 유지된다. 결정 매트릭스는 `_workspace/00_input.md §11`.
 > 상위 문서: `_workspace/00_input.md`, `_workspace/01_architecture.md`, `_workspace/02_api_spec.md`, `_workspace/03_db_schema.md`, `_workspace/05_deploy_guide.md`, `_workspace/04_test_plan.md`

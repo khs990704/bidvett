@@ -20,7 +20,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="text-center text-xl">
-              Welcome back to ConnectSaver
+              Welcome back to BidVett
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">

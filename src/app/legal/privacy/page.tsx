@@ -2,7 +2,7 @@ import { Header } from "@/components/nav/Header";
 import { Footer } from "@/components/nav/Footer";
 
 export const metadata = {
-  title: "Privacy Policy · ConnectSaver",
+  title: "Privacy Policy · BidVett",
 };
 
 export default function PrivacyPage() {

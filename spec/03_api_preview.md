@@ -1,7 +1,7 @@
-# API 초안 — ConnectSaver
+# API 초안 — BidVett
 
 > [PIVOT-01 rev2 — 2026-05-29] 결제 인프라 Stripe → Dodo Payments. §2 #9~#10, §3.7~§3.8, §4 webhook code, 에러 코드(`ERR_WEBHOOK_SIGNATURE`, `ERR_STRIPE_UPSTREAM` → `ERR_DODO_UPSTREAM`)를 갱신했다. 결정 매트릭스는 `_workspace/00_input.md §11`.
-> Base URL: `https://app.connectsaver.com/api` (production), `http://localhost:3000/api` (dev)
+> Base URL: `https://app.bidvett.com/api` (production), `http://localhost:3000/api` (dev)
 > Auth scheme: Supabase JWT via `Authorization: Bearer <access_token>` OR session cookie set by `@supabase/ssr`
 > Response: `application/json` (UTF-8)
 > All user-facing strings: English (Q5)

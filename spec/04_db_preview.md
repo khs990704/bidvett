@@ -1,4 +1,4 @@
-# DB 초안 — ConnectSaver (Supabase / PostgreSQL 15)
+# DB 초안 — BidVett (Supabase / PostgreSQL 15)
 
 > [PIVOT-01 rev2 — 2026-05-29] `stripe_events` → `dodo_events` 테이블 rename. `credit_ledger.stripe_event_id` → `dodo_event_id`, `subscriptions.stripe_*` 컬럼은 일반화하여 `dodo_customer_id` / `dodo_subscription_id` / `dodo_checkout_session_id`로 변경. 결정 매트릭스는 `_workspace/00_input.md §11`.
 > Naming: snake_case

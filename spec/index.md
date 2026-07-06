@@ -1,4 +1,4 @@
-# Spec → Workspace 매핑 가이드 — ConnectSaver
+# Spec → Workspace 매핑 가이드 — BidVett
 
 > spec/는 사전 기획/설계 **프리뷰**(초안)이고, `_workspace/`는 구현 단계의 **확정본**이다.
 > 상충 시 `_workspace/`가 우선한다.

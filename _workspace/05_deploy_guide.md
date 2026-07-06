@@ -1,4 +1,4 @@
-# 05_deploy_guide.md — ConnectSaver 배포 가이드 (확정본)
+# 05_deploy_guide.md — BidVett 배포 가이드 (확정본)
 
 > [PIVOT-01 rev2 — 2026-05-29] 결제 인프라 Stripe → Dodo Payments. §0 토폴로지, §1.1 외부 계정 #5, §3.3 환경변수 매트릭스, §4 전체(Stripe 셋업 → Dodo Payments 셋업), §5.2 환경변수 인벤토리, §5.3 smoke test #7~#9, §6.5 알람, §7.3 webhook 비활성, §9.1 secrets 검색 패턴, §13 deferred 표를 갱신했다. 결정 매트릭스는 `_workspace/00_input.md §11`.
 > 상위 문서: `_workspace/00_input.md`, `_workspace/01_architecture.md`, `_workspace/03_db_schema.md`
@@ -39,19 +39,19 @@ graph LR
 
 | # | 항목 | 발급처 | 비고 |
 |---|------|-------|------|
-| 1 | **GitHub repo** | `github.com/<owner>/connectsaver` (private OK) | Vercel/Supabase OAuth가 이 repo에 권한 필요 |
+| 1 | **GitHub repo** | `github.com/<owner>/bidvett` (private OK) | Vercel/Supabase OAuth가 이 repo에 권한 필요 |
 | 2 | **Vercel 계정** | https://vercel.com/signup → GitHub 연동 | Hobby plan 시작 (Pro $20/mo는 Week 3+ 트래픽 검토 후) |
 | 3 | **Supabase 프로젝트** | https://supabase.com/dashboard → "New project" | DB password는 1password 등에 보관 |
-| 4 | **OpenAI API key** | https://platform.openai.com/api-keys → "Create new secret key" (제목: `connectsaver-prod`) | Soft limit / hard limit은 §6.3 참조 |
+| 4 | **OpenAI API key** | https://platform.openai.com/api-keys → "Create new secret key" (제목: `bidvett-prod`) | Soft limit / hard limit은 §6.3 참조 |
 | 5 | **Dodo Payments 계정 (test mode)** | https://dodopayments.com (또는 `[TBD: confirm signup URL]`) → 이메일 인증 → test mode 자동 활성 (`[TBD: confirm exact UI path with Dodo docs]`) | live mode 활성은 Week 2 Day 14에 별도 절차 |
 | 6 | **Google Cloud OAuth client** | https://console.cloud.google.com → APIs & Services → Credentials → "OAuth client ID" | §2.2 단계별 |
-| 7 | **도메인** (선택) | Cloudflare/Namecheap/Gandi 중 택1 | MVP는 Vercel 기본 도메인(`connectsaver.vercel.app`)으로 충분 |
+| 7 | **도메인** (선택) | Cloudflare/Namecheap/Gandi 중 택1 | MVP는 Vercel 기본 도메인(`bidvett.vercel.app`)으로 충분 |
 
 ### 1.2 Google Cloud OAuth 클라이언트 발급 (5분)
 
-1. Google Cloud Console → 프로젝트 생성 (이름: `ConnectSaver`).
+1. Google Cloud Console → 프로젝트 생성 (이름: `BidVett`).
 2. APIs & Services → **OAuth consent screen** → User Type: `External` → Save.
-   - App name: `ConnectSaver`
+   - App name: `BidVett`
    - User support email: 본인
    - Authorized domains: `supabase.co` (Supabase Auth가 redirect를 호스팅)
    - Scopes: `email`, `profile`, `openid` (기본)
@@ -68,7 +68,7 @@ graph LR
 ### 2.1 프로젝트 생성
 
 1. https://supabase.com/dashboard → **New project**
-2. Name: `connectsaver-prod` (또는 `connectsaver-dev`)
+2. Name: `bidvett-prod` (또는 `bidvett-dev`)
 3. Database Password: 16자 이상 랜덤 (1password 보관)
 4. **Region: `us-east-1` (N. Virginia)** — Vercel `iad1`과 동일 PoP. 글로벌 타겟이지만 가장 큰 LLM/결제 비중을 차지하는 미국 시장 응답을 최적화.
 5. Pricing Plan: **Free** (8GB DB / 50MB file storage / 50K MAU로 시작 충분). v1.1 MAU > 30K 도달 시 Pro($25/mo).
@@ -140,7 +140,7 @@ SELECT * FROM public.credit_ledger WHERE user_id <> auth.uid();
 
 ### 3.1 프로젝트 생성 / GitHub 연결
 
-1. https://vercel.com/new → "Import Git Repository" → `connectsaver` repo 선택.
+1. https://vercel.com/new → "Import Git Repository" → `bidvett` repo 선택.
 2. Framework Preset: `Next.js` 자동 인식.
 3. Root Directory: `.` (모노레포 아님 — 루트가 곧 Next.js 앱).
 4. Build Command / Output Directory: 기본값 (`next build` / `.next`).
@@ -149,8 +149,8 @@ SELECT * FROM public.credit_ledger WHERE user_id <> auth.uid();
 ### 3.2 Vercel KV 프로비저닝
 
 1. 프로젝트 페이지 → **Storage** 탭 → **Create Database** → **KV** 선택.
-2. Name: `connectsaver-kv`, Region: **iad1** (앱과 동일).
-3. **"Connect Project"** → connectsaver 프로젝트 선택 → 모든 환경 (Production/Preview/Development) 체크.
+2. Name: `bidvett-kv`, Region: **iad1** (앱과 동일).
+3. **"Connect Project"** → bidvett 프로젝트 선택 → 모든 환경 (Production/Preview/Development) 체크.
 4. 자동 주입 환경변수 (Vercel이 시크릿으로 등록):
    - `KV_URL`
    - `KV_REST_API_URL`
@@ -183,7 +183,7 @@ Vercel Dashboard → 프로젝트 → **Settings** → **Environment Variables**
 | `SENTRY_DSN` | (empty until v1.0) | (empty) | (set on v1.0 launch) | Server | `[deferred]` §6.2 |
 | `NEXT_PUBLIC_SENTRY_DSN` | (empty) | (empty) | (set on v1.0) | Client | 동일 값 |
 | `SYSTEM_PROMPT_VERSION` | `1` | `1` | `1` | Server | DB 조회 실패 시 폴백 |
-| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` | `https://*.vercel.app` | `https://app.connectsaver.com` | Client | OAuth redirect + Dodo Hosted Checkout success_url |
+| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` | `https://*.vercel.app` | `https://app.bidvett.com` | Client | OAuth redirect + Dodo Hosted Checkout success_url |
 
 **등록 절차**: 변수 하나씩 Add → Value 입력 → 환경 체크박스 선택 (Production / Preview / Development) → Save. 일괄 등록은 Vercel CLI로:
 
@@ -196,11 +196,11 @@ vercel env add OPENAI_API_KEY production
 
 ### 3.4 도메인 연결 (Day 14, 선택)
 
-1. Vercel Dashboard → Settings → **Domains** → Add `app.connectsaver.com` (또는 보유 도메인).
+1. Vercel Dashboard → Settings → **Domains** → Add `app.bidvett.com` (또는 보유 도메인).
 2. DNS provider (Cloudflare 등)에서 CNAME `cname.vercel-dns.com` 추가.
 3. Vercel이 자동 SSL (Let's Encrypt) 발급 — 평균 30초.
 4. **Supabase Site URL과 Google OAuth Redirect URI를 도메인으로 업데이트** (§2.2 4번 항목). 누락 시 OAuth 콜백 실패.
-5. **Dodo Webhook endpoint URL도 업데이트** (§4.2 4번 항목): `https://app.connectsaver.com/api/webhooks/dodo`.
+5. **Dodo Webhook endpoint URL도 업데이트** (§4.2 4번 항목): `https://app.bidvett.com/api/webhooks/dodo`.
 
 ---
 
@@ -238,7 +238,7 @@ vercel env add OPENAI_API_KEY production
 1. Dodo Dashboard → **Developers** → **Webhooks** → **Add endpoint** (`[TBD: confirm exact UI path with Dodo docs]`).
 2. Endpoint URL:
    - Test mode: `https://<vercel-preview-url>/api/webhooks/dodo`
-   - Live mode (Day 14): `https://app.connectsaver.com/api/webhooks/dodo`
+   - Live mode (Day 14): `https://app.bidvett.com/api/webhooks/dodo`
 3. **Events to subscribe** — 다음 5개만 선택:
    - `payment.succeeded`
    - `subscription.active`
@@ -454,14 +454,14 @@ psql "$SUPABASE_DB_URL" -c "DROP FUNCTION IF EXISTS public.record_analysis_and_d
 | **Supabase SMTP** | (Supabase Free에 포함) | 별도 SMTP provider 필요 | 사용자 수동 | ★★★ — Auth 메일(가입/비번 리셋) 전용 권장. Transactional은 부적합 | Auth 메일은 사용, 트랜잭셔널은 분리 |
 | **Postmark** | 100/mo free | 5분 | 자동 | ★★★★ — 트랜잭셔널 deliverability 1위 | 도메인 신뢰도 1위지만 무료 한도 작음 |
 
-**결정 시점**: **v1.0 진입(Week 3 Day 1)**, 트리거는 "결제 영수증 첫 발송 필요 시" — Dodo Hosted Checkout에 receipt 옵션이 내장되어 있어 (`[TBD: confirm Dodo receipt behavior]`) MVP는 Dodo receipt만으로 운영 가능. ConnectSaver 자체 알림(주간 무제한 만료, 환불 완료, 사용량 80% 도달 등)이 필요해지는 v1.0 시점이 도입 적기.
+**결정 시점**: **v1.0 진입(Week 3 Day 1)**, 트리거는 "결제 영수증 첫 발송 필요 시" — Dodo Hosted Checkout에 receipt 옵션이 내장되어 있어 (`[TBD: confirm Dodo receipt behavior]`) MVP는 Dodo receipt만으로 운영 가능. BidVett 자체 알림(주간 무제한 만료, 환불 완료, 사용량 80% 도달 등)이 필요해지는 v1.0 시점이 도입 적기.
 
-**제안 default**: **Resend** — Next.js + React Email 조합으로 1일 이내 통합. 도메인은 Cloudflare에서 `mail.connectsaver.com` subdomain 발급 후 Resend DKIM/SPF/Return-Path 자동 설정.
+**제안 default**: **Resend** — Next.js + React Email 조합으로 1일 이내 통합. 도메인은 Cloudflare에서 `mail.bidvett.com` subdomain 발급 후 Resend DKIM/SPF/Return-Path 자동 설정.
 
 도입 시 env 추가:
 ```
 RESEND_API_KEY=re_...
-EMAIL_FROM_DEFAULT="ConnectSaver <noreply@connectsaver.com>"
+EMAIL_FROM_DEFAULT="BidVett <noreply@bidvett.com>"
 ```
 
 ---
@@ -539,7 +539,7 @@ graph TB
 
   subgraph Edge["Vercel Edge Network"]
     CDN["CDN<br/>(static assets, ISR)"]
-    DNSr["DNS / SSL<br/>app.connectsaver.com"]
+    DNSr["DNS / SSL<br/>app.bidvett.com"]
   end
 
   subgraph Compute["Vercel Functions (iad1)"]

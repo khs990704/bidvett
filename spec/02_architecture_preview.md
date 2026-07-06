@@ -1,4 +1,4 @@
-# 시스템 아키텍처 초안 — ConnectSaver
+# 시스템 아키텍처 초안 — BidVett
 
 > [PIVOT-01 rev2 — 2026-05-29] 결제 인프라 Stripe → Dodo Payments. 본 문서 §1, §2 다이어그램, §3.1 디렉토리, §3.2, §4.2, §6, §7, §8을 갱신했다. 결정 매트릭스는 `_workspace/00_input.md §11`.
 > Source: `spec/01_prd.md`, `idea_inquiry.md` Q1~Q6

@@ -4,7 +4,7 @@ export function Footer() {
   return (
     <footer className="border-t bg-background mt-12">
       <div className="container flex flex-col sm:flex-row items-center justify-between gap-2 py-6 text-sm text-muted-foreground">
-        <div>© {new Date().getFullYear()} ConnectSaver</div>
+        <div>© {new Date().getFullYear()} BidVett</div>
         <nav className="flex gap-4">
           <Link href="/pricing" className="hover:text-foreground">
             Pricing

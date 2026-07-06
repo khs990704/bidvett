@@ -1,4 +1,4 @@
-# 02_api_spec.md — ConnectSaver API 명세 확정본
+# 02_api_spec.md — BidVett API 명세 확정본
 
 > [PIVOT-01 rev2 — 2026-05-29] 결제 인프라 Stripe → Dodo Payments. §2 webhook path, §3.7 checkout, §3.8 webhook full rewrite, §4 에러 코드(`ERR_DODO_UPSTREAM`)를 갱신. 결정 매트릭스는 `_workspace/00_input.md §11`.
 > 상위 문서: `_workspace/00_input.md`, `_workspace/01_architecture.md`
@@ -12,7 +12,7 @@
 | 항목 | 값 |
 |------|---|
 | **Base URL (dev)** | `http://localhost:3000/api` |
-| **Base URL (prod)** | `https://app.connectsaver.com/api` |
+| **Base URL (prod)** | `https://app.bidvett.com/api` |
 | **인증 방식** | Supabase JWT (`Authorization: Bearer <access_token>`) 또는 `@supabase/ssr` cookie 세션 |
 | **응답 형식** | `application/json; charset=utf-8` |
 | **시간 표기** | ISO 8601 UTC (예: `2026-05-27T11:24:01Z`) |
@@ -594,7 +594,7 @@ z.object({
 - **Timestamps**: ISO 8601 UTC.
 - **Currency**: USD 정수 cents. 단, API JSON 응답에서 hourly rate 등 사용자 가시 금액은 정수 USD ($45 = 45).
 - **Locale**: `en` 단일.
-- **CORS**: API는 same-origin (`app.connectsaver.com`)만 허용. Dodo webhook은 cors 무관 (Standard Webhooks signature 검증).
+- **CORS**: API는 same-origin (`app.bidvett.com`)만 허용. Dodo webhook은 cors 무관 (Standard Webhooks signature 검증).
 
 ---
 
