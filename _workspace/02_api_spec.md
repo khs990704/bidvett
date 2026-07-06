@@ -422,7 +422,12 @@ z.object({
 }
 ```
 
-**Errors**: `400 ERR_BAD_REQUEST`, `401`, `429 ERR_RATE_LIMITED`, `502 ERR_DODO_UPSTREAM`.
+**Errors**: `400 ERR_BAD_REQUEST`, `401`, `409 ERR_BAD_REQUEST` when an active weekly/monthly subscription already exists, `429 ERR_RATE_LIMITED`, `502 ERR_DODO_UPSTREAM`.
+
+**Active subscription guard**:
+- `credit_single` checkout is always allowed.
+- `weekly_pass` / `monthly_sub` checkout is blocked while the user has an active `subscriptions` row (`status='active' AND period_end > now()`).
+- Plan changes are not prorated in MVP. User must cancel the current subscription and wait until the paid period ends before starting another recurring plan.
 
 **Internal sequence** (의사 시그니처 — `// [TBD: confirm exact Dodo Payments SDK signature]`):
 ```ts

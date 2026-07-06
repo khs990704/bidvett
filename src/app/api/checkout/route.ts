@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withErrorHandling, ApiError, ErrorCode } from '@/lib/errors';
 import { requireUser } from '@/lib/supabase/require-user';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { checkRate, rlKey, clientIpFromHeaders } from '@/lib/rate-limit/kv';
 import { createCheckoutSession } from '@/lib/dodo/client';
 import type { CheckoutResponse } from '@/lib/types/api';
@@ -44,6 +45,40 @@ export const POST = withErrorHandling(async (req: Request) => {
     throw new ApiError(400, ErrorCode.VALIDATION, {
       issues: parsed.error.issues.slice(0, 5),
     });
+  }
+
+  if (parsed.data.plan !== 'credit_single') {
+    const supabase = await createSupabaseServerClient();
+    const { data: activeSub, error: subErr } = await supabase
+      .from('subscriptions')
+      .select('plan, period_end, cancelled_at')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .gt('period_end', new Date().toISOString())
+      .in('plan', ['weekly_pass', 'monthly_sub'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (subErr) {
+      // eslint-disable-next-line no-console
+      console.error('[checkout] active subscription lookup failed', subErr);
+      throw new ApiError(500, ErrorCode.INTERNAL);
+    }
+
+    if (activeSub) {
+      throw new ApiError(
+        409,
+        ErrorCode.BAD_REQUEST,
+        {
+          reason: 'active_subscription_exists',
+          active_plan: activeSub.plan,
+          period_end: activeSub.period_end,
+          cancel_at_period_end: activeSub.cancelled_at != null,
+        },
+        'You already have an active subscription. Cancel it before changing plans.',
+      );
+    }
   }
 
   const idempotencyKey = req.headers.get('idempotency-key') ?? undefined;

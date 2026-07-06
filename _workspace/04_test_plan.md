@@ -98,6 +98,7 @@
 | P1 | Checkout single | plan=credit_single | 200 `{checkout_url}` → Dodo Hosted Checkout redirect | 수동 §5.3 #7 |
 | P2 | Checkout weekly_pass | plan=weekly_pass | 동일 | 수동 |
 | P3 | Checkout monthly_sub (mode=subscription) | plan=monthly_sub | 동일, session.metadata 포함 | 수동 |
+| P3b | Checkout recurring plan while active sub exists | plan=weekly_pass/monthly_sub | 409 `ERR_BAD_REQUEST`, reason=`active_subscription_exists` | 수동 |
 | P4 | Webhook bad signature | tampered `webhook-signature` 헤더 | 400 `ERR_WEBHOOK_SIGNATURE` | integration `dodo-webhook.test.ts` (Standard Webhooks HMAC-SHA256 검증 케이스) |
 | P4b | Webhook stale timestamp | `webhook-timestamp` 5분 초과 | 400 `ERR_WEBHOOK_SIGNATURE` (replay window) | integration |
 | P4c | Webhook missing headers | `webhook-id` 누락 | 400 `ERR_WEBHOOK_SIGNATURE` | integration |

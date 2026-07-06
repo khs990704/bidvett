@@ -237,6 +237,8 @@ Response 200:
 }
 ```
 
+활성 주간/월간 구독이 이미 있으면 새 주간/월간 checkout은 `409 ERR_BAD_REQUEST`로 차단한다. 단건 크레딧 구매는 기존 구독과 무관하게 허용한다. MVP에서는 proration/즉시 플랜 변경을 지원하지 않으므로, 사용자는 기존 구독을 취소하고 현재 paid period가 끝난 뒤 다른 recurring plan을 시작한다.
+
 내부 호출 (의사 시그니처 — `// [TBD: confirm exact Dodo Payments SDK signature]`):
 
 ```ts
