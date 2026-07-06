@@ -23,7 +23,7 @@
 | Day | 작업 | 담당 에이전트 |
 |-----|------|--------------|
 | 1 | Repo 부트스트랩 (Next.js + Tailwind + shadcn/ui + TypeScript), Supabase 프로젝트 생성, Vercel 연결 | devops + frontend |
-| 2 | Supabase 스키마 마이그레이션(§spec/04) + RLS 정책 적용 + signup trigger (free 3 credits) | backend |
+| 2 | Supabase 스키마 마이그레이션(§spec/04) + RLS 정책 적용 + signup trigger (free 5 credits) | backend |
 | 3 | Google OAuth + `/api/auth/callback` + Middleware (auth, rate limit stub) | backend + frontend |
 | 4 | `/onboarding` UI + `/api/profile/extract` (OpenAI Structured Outputs) + `PUT /api/profile` | frontend + backend |
 | 5 | Landing + Pricing 정적 페이지 + shadcn UI 키트 정렬 | frontend |
@@ -93,7 +93,7 @@
 ### Done (Acceptance criteria for MVP Done)
 
 1. New user can sign up via Google in < 10s
-2. New user gets 3 free credits visible in `/dashboard`
+2. New user gets 5 free credits visible in `/dashboard`
 3. Onboarding extracts skills/years/rate/timezone with editable UI
 4. Paste a real Upwork posting → see SAFE/WARNING/DANGER verdict + match score in < 6s (p95)
 5. Dodo Hosted Checkout works for all 3 tiers in test mode

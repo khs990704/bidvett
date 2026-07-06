@@ -28,7 +28,7 @@
 
 | # | 기능 | User Story | Acceptance Criteria |
 |---|------|-----------|---------------------|
-| FR-1 | Google OAuth Sign-in | As a freelancer, I want to sign in with Google so I can start in <10 seconds. | Supabase Auth 단일 흐름 / 신규 가입 시 무료 크레딧 3개 자동 지급 / 세션 영구 유지(Refresh Token) |
+| FR-1 | Google OAuth Sign-in | As a freelancer, I want to sign in with Google so I can start in <10 seconds. | Supabase Auth 단일 흐름 / 신규 가입 시 무료 크레딧 5개 자동 지급 / 세션 영구 유지(Refresh Token) |
 | FR-2 | Profile Onboarding (Hybrid) | As a new user, I paste my resume once and have my skills/rate/timezone extracted automatically. | Free-text Textarea → `POST /api/profile/extract` → 4개 필드(`skills[]`, `years_of_experience`, `target_hourly_rate`, `timezone`) 자동 추출 → shadcn/ui Tag/Number Input으로 편집 가능 → [Save] 시 `users_profile` upsert |
 | FR-3 | Job Posting Paste & Analyze | As a user, I want to paste an Upwork job and click [Analyze] to receive a verdict. | 단일 Textarea / Frontend 전처리(헤더/푸터/광고 제거) → `POST /api/analyze` / 3초 내 응답 (p50<3s) / 응답 동안 로딩 스피너 노출 |
 | FR-4 | Quantitative Rule Engine | The backend flags jobs that fail objective hard filters. | OpenAI Structured Outputs로 `hire_rate`, `payment_verified`, `total_spend`, `rating` 추출 → 백엔드 Rule Engine이 다음 중 1개라도 충족 시 `CRITICAL_RISK`: ① hire_rate<20% ② payment_unverified AND total_spend=$0 ③ rating≤3.5 |
@@ -88,7 +88,7 @@
 2. Google OAuth 동의 → /onboarding 자동 진입
 3. Onboarding에서 이력서 텍스트 붙여넣기 → "Extract" 클릭
 4. AI 추출 결과(skills / years / hourly rate / timezone) 표시 → 사용자가 보정 → [Save]
-5. /dashboard 진입, 무료 크레딧 3개 표기 ("3 free analyses available")
+5. /dashboard 진입, 무료 크레딧 5개 표기 ("5 free analyses available")
 6. Upwork 공고 페이지 복사 → Dashboard Textarea 붙여넣기 → [Analyze]
 7. 3초 내 Report Modal 등장: 안전이면 매칭 점수 + Action Tip, 위험이면 "DO NOT APPLY" + 사유
 8. 사용자가 결정: Apply on Upwork / Skip / Report Scam
@@ -147,7 +147,7 @@
 
 - Frontend 전처리 로직은 `lib/extractors/upwork.ts` v1(spec/02 §3.3 확정 본문)로 확정. 헤더('Job details'/'Job Description'/'Back to job post') 좌측 컷 + 푸터('Browse jobs'/'About Us'/'Terms of Service'/'Accessibility'/'© YYYY') 우측 컷 + 공백 정규화의 3-step regex. Upwork UI 변경 시 깨질 수 있고 1차 방어선이므로 시스템 프롬프트(`analyze.v1`)가 잔여 노이즈를 2차로 흡수한다. v2 트리거는 spec/02 §3.3.5 참조.
 - `[가정]` Soft cap 도달 시 사용자에게 안내만 하고 차단 (강제 차단). 자동 업그레이드 권유 X.
-- `[가정]` 무료 크레딧 3개는 영구 보존 (만료 없음).
+- `[가정]` 무료 크레딧 5개는 영구 보존 (만료 없음).
 - `[TBD]` GDPR Data Export / Delete 흐름의 구체 구현 시점.
 - `[TBD]` 같은 공고를 재분석할 경우 중복 차감 방지 (해시 기반 캐싱) 여부.
 - `[TBD]` Email Notification 채널 (Resend vs Supabase SMTP vs Postmark).

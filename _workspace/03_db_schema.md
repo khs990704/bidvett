@@ -210,8 +210,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uniq_subscriptions_dodo_sub
   WHERE dodo_subscription_id IS NOT NULL;
 
 COMMENT ON COLUMN public.subscriptions.dodo_customer_id IS 'Dodo Payments customer identifier (returned in checkout.success / subscription.active events).';
-COMMENT ON COLUMN public.subscriptions.dodo_subscription_id IS 'Dodo subscription identifier (monthly_sub only). NULL for weekly_pass (one-time payment).';
-COMMENT ON COLUMN public.subscriptions.dodo_checkout_session_id IS 'Dodo Hosted Checkout session identifier — single-use for weekly_pass idempotency.';
+COMMENT ON COLUMN public.subscriptions.dodo_subscription_id IS 'Dodo subscription identifier for recurring weekly_pass/monthly_sub.';
+COMMENT ON COLUMN public.subscriptions.dodo_checkout_session_id IS 'Dodo Hosted Checkout session identifier.';
 ```
 
 ### 3.4 `analyses`
@@ -396,7 +396,7 @@ CREATE TRIGGER trg_subscriptions_updated_at
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 ```
 
-### 5.2 신규 가입자에게 무료 크레딧 3개 지급
+### 5.2 신규 가입자에게 무료 크레딧 5개 지급
 
 ```sql
 CREATE OR REPLACE FUNCTION public.grant_free_credits_on_signup()
@@ -407,7 +407,7 @@ SET search_path = public
 AS $$
 BEGIN
   INSERT INTO public.credit_ledger (user_id, type, delta, balance_after, note)
-  VALUES (NEW.id, 'free_grant', 3, 3, 'Welcome bonus: 3 free analyses');
+  VALUES (NEW.id, 'free_grant', 5, 5, 'Welcome bonus: 5 free analyses');
   RETURN NEW;
 END;
 $$;
@@ -650,7 +650,7 @@ DB 마이그레이션이 아니며 Dodo Payments에서 Product 3개를 1회 등�
 | Nickname | unit_amount | currency | mode | 매핑 plan |
 |----------|-------------|----------|------|----------|
 | `single_credit_099` | 99 ($0.99) | usd | one-time | `credit_single` |
-| `weekly_pass_499` | 499 ($4.99) | usd | one-time | `weekly_pass` (앱이 7일 만료를 처리) |
+| `weekly_pass_499` | 499 ($4.99) | usd | recurring (weekly) | `weekly_pass` |
 | `monthly_19` | 1900 ($19) | usd | recurring (monthly) | `monthly_sub` |
 
 3. 각 Product의 ID 복사 → Vercel Env Vars:

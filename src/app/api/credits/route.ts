@@ -55,6 +55,8 @@ export const GET = withErrorHandling(async (req: Request) => {
         expires_at: sub.period_end,
         usage_this_period: sub.usage_count,
         soft_cap: sub.soft_cap,
+        is_recurring: sub.dodo_subscription_id != null,
+        cancel_at_period_end: sub.cancelled_at != null,
       };
     } else if (sub.plan === 'monthly_sub' && !active_subscription) {
       active_subscription = {

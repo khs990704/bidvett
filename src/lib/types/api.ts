@@ -109,6 +109,8 @@ export interface CreditsResponse {
     expires_at: string;
     usage_this_period: number;
     soft_cap: number;
+    is_recurring: boolean;
+    cancel_at_period_end: boolean;
   } | null;
   active_subscription: {
     type: "monthly";

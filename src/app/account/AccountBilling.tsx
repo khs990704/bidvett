@@ -38,6 +38,11 @@ function isCreditsChanged(
   if (!!prev.active_pass !== !!next.active_pass) return true;
   if (!!prev.active_subscription !== !!next.active_subscription) return true;
   if (
+    prev.active_pass?.cancel_at_period_end !==
+    next.active_pass?.cancel_at_period_end
+  )
+    return true;
+  if (
     prev.active_subscription?.cancel_at_period_end !==
     next.active_subscription?.cancel_at_period_end
   )
@@ -120,9 +125,12 @@ export function AccountBilling() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pollingPayment, loading, router]);
 
-  const hasCancellableSub =
-    !!data?.active_subscription &&
-    !data.active_subscription.cancel_at_period_end;
+  const hasCancellablePlan =
+    (!!data?.active_pass &&
+      data.active_pass.is_recurring &&
+      !data.active_pass.cancel_at_period_end) ||
+    (!!data?.active_subscription &&
+      !data.active_subscription.cancel_at_period_end);
 
   const handleCancel = async () => {
     setCancelling(true);
@@ -173,9 +181,13 @@ export function AccountBilling() {
             {data?.active_pass ? (
               <p>
                 <span className="text-muted-foreground">Weekly Pass: </span>
-                expires {new Date(data.active_pass.expires_at).toLocaleString()}{" "}
+                {data.active_pass.is_recurring ? "renews" : "expires"}{" "}
+                {new Date(data.active_pass.expires_at).toLocaleString()}{" "}
                 · {data.active_pass.usage_this_period}/
                 {data.active_pass.soft_cap} used
+                {data.active_pass.cancel_at_period_end
+                  ? " · cancels at period end"
+                  : ""}
               </p>
             ) : null}
             {data?.active_subscription ? (
@@ -202,7 +214,7 @@ export function AccountBilling() {
           <Button asChild variant="outline">
             <Link href="/pricing">View plans</Link>
           </Button>
-          {hasCancellableSub ? (
+          {hasCancellablePlan ? (
             <Button
               variant="ghost"
               onClick={() => setCancelOpen(true)}
@@ -232,7 +244,8 @@ export function AccountBilling() {
             <DialogTitle>Cancel subscription?</DialogTitle>
             <DialogDescription>
               Your access continues until the end of the current billing
-              period. You won&apos;t be charged again unless you re-subscribe.
+              period. Future renewals will be turned off, and you won&apos;t be
+              charged again unless you re-subscribe.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

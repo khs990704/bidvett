@@ -25,7 +25,7 @@ const PLANS: PricingPlan[] = [
     features: [
       "Unlimited analyses for 7 days",
       "Soft cap 100 / week",
-      "Auto-expires (no auto-renew)",
+      "Renews weekly, cancel anytime",
     ],
     cta: "Start pass",
     highlight: true,

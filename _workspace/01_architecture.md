@@ -285,10 +285,10 @@ tests/
   ```
   자체 구현 시 timing-safe compare 실수 위험 — 라이브러리 사용 강력 권장.
 - **처리 이벤트**:
-  - `payment.succeeded` → one-time 결제(single / weekly_pass) plan에 따라 `credit_ledger` insert OR `subscriptions` insert
-  - `subscription.active` → 신규 monthly_sub 활성화: `subscriptions` insert(`status='active'`, `period_end=now+30d`)
-  - `subscription.renewed` → 구 `invoice.paid` 흡수. `subscriptions.period_end += 30d`, `usage_count = 0`
-  - `subscription.cancelled` → `status='canceled'`
+  - `payment.succeeded` → one-time 결제(single) plan이면 `credit_ledger` insert. 구독 플랜은 `subscription.active`를 source of truth로 사용
+  - `subscription.active` → 신규 weekly_pass/monthly_sub 활성화: `subscriptions` insert(`status='active'`, `period_end=next_billing_date`)
+  - `subscription.renewed` → 구 `invoice.paid` 흡수. `subscriptions.period_end = next_billing_date`, `usage_count = 0`, `cancelled_at = null`
+  - `subscription.cancelled` → `cancelled_at` 기록. 현재 paid period는 유지하고 다음 갱신은 차단
   - `refund.succeeded` → 0회 사용 + 7일 이내 검증 → 크레딧 무효화 (`credit_ledger` `type='refund_reversal'`, `delta`는 원 결제분과 동일 절댓값의 negative). subscription이면 `status='refunded'`.
 - **멱등성**: 진입 첫 단계에 `dodo_events` insert (PK = Standard Webhooks `webhook-id` 헤더 값). 충돌 시 `processed=true`면 `200 OK` 즉시 반환.
 
@@ -401,13 +401,13 @@ sequenceDiagram
     WH-->>DP: 200 {received:true}
   end
   alt event = payment.succeeded
-    WH->>ADM: derive plan → credit_ledger.insert (single) OR subscriptions.insert (weekly_pass)
+    WH->>ADM: derive plan → credit_ledger.insert (single)
   else event = subscription.active
-    WH->>ADM: subscriptions.insert (monthly_sub, period_end=now+30d)
+    WH->>ADM: subscriptions.insert (weekly_pass/monthly_sub, period_end=next_billing_date)
   else event = subscription.renewed
-    WH->>ADM: subscriptions.update period_end += 30d, usage_count=0
+    WH->>ADM: subscriptions.update period_end=next_billing_date, usage_count=0
   else event = subscription.cancelled
-    WH->>ADM: subscriptions.update status='canceled'
+    WH->>ADM: subscriptions.update cancelled_at
   else event = refund.succeeded
     WH->>DB: verify usage=0 AND age<7d
     WH->>ADM: credit_ledger.insert type='refund_reversal' delta=-N
@@ -553,7 +553,7 @@ function callOpenAIWithRetry(req):
   - DB SELECT: Supabase RLS (`auth.uid() = user_id`).
   - DB INSERT/UPDATE/DELETE (user-owned 테이블): service_role admin client 사용 (서버 로직이 검증 후 신뢰).
   - `system_prompts`, `dodo_events`: service_role 전용 (RLS deny by default).
-- **새 가입자 처리**: `auth.users` insert 트리거 `grant_free_credits_on_signup()`이 `credit_ledger`에 `(type='free_grant', delta=+3, balance_after=3)` 자동 삽입.
+- **새 가입자 처리**: `auth.users` insert 트리거 `grant_free_credits_on_signup()`이 `credit_ledger`에 `(type='free_grant', delta=+5, balance_after=5)` 자동 삽입.
 
 ## 12. 확장 트리거 (현재 MVP → 다음 단계)
 

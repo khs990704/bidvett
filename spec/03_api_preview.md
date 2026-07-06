@@ -19,7 +19,7 @@
 
 | # | Method | Path | 설명 | 인증 | Body / Params |
 |---|--------|------|------|------|---------------|
-| 1 | POST | `/api/auth/callback` | OAuth 콜백, 세션 교환 + 신규 가입 시 무료 크레딧 3개 지급 | Public (signed by Supabase) | `?code=<oauth_code>` |
+| 1 | POST | `/api/auth/callback` | OAuth 콜백, 세션 교환 + 신규 가입 시 무료 크레딧 5개 지급 | Public (signed by Supabase) | `?code=<oauth_code>` |
 | 2 | POST | `/api/profile/extract` | 자유 텍스트 이력서 → 구조화 4필드 추출 (LLM) | Required | `{ "resume_text": string }` |
 | 3 | GET | `/api/profile` | 현재 사용자 프로필 조회 | Required | — |
 | 4 | PUT | `/api/profile` | 프로필 저장/수정 | Required | `{ skills, years_of_experience, target_hourly_rate, timezone, resume_text? }` |
@@ -39,7 +39,7 @@
 
 Supabase Auth가 자동 처리하지만, Server Action 단에서 신규 가입자 후처리를 수행:
 
-- 신규 user → `users_profile`에 row 없음 → `credit_ledger`에 `{type: 'free_grant', delta: +3}` insert
+- 신규 user → `users_profile`에 row 없음 → `credit_ledger`에 `{type: 'free_grant', delta: +5}` insert
 - 기존 user → no-op
 
 응답: `302 Redirect` → 신규 가입 시 `/onboarding`, 기존 사용자는 `/dashboard`.
@@ -210,7 +210,9 @@ Response 200:
     "type": "weekly",
     "expires_at": "2026-06-03T11:24:01Z",
     "usage_this_period": 14,
-    "soft_cap": 100
+    "soft_cap": 100,
+    "is_recurring": true,
+    "cancel_at_period_end": false
   },
   "active_subscription": null
 }
@@ -277,10 +279,10 @@ const event = wh.verify(rawBody, {
 
 | Event | Action |
 |-------|--------|
-| `payment.succeeded` | one-time 결제(single / weekly_pass) 처리. plan에 따라 `credit_ledger` insert 또는 `subscriptions` insert |
-| `subscription.active` | 신규 monthly_sub 활성화 — `subscriptions` insert(period_end=now+30d, usage_count=0) |
-| `subscription.renewed` | monthly_sub 갱신 — `subscriptions.period_end += 30d`, `usage_count = 0` (구 `invoice.paid` 흡수) |
-| `subscription.cancelled` | 구독 만료/취소 — `subscriptions.status='canceled'` (period_end 보존) |
+| `payment.succeeded` | one-time 결제(single) 처리. 구독 플랜은 `subscription.active`를 source of truth로 사용 |
+| `subscription.active` | 신규 weekly_pass/monthly_sub 활성화 — `subscriptions` insert(period_end=next_billing_date, usage_count=0) |
+| `subscription.renewed` | weekly_pass/monthly_sub 갱신 — `subscriptions.period_end = next_billing_date`, `usage_count = 0`, `cancelled_at = null` |
+| `subscription.cancelled` | 구독 갱신 취소 — `subscriptions.cancelled_at` 기록, 현재 period_end까지 접근 유지 |
 | `refund.succeeded` | 7일/0회 사용 검증 후 크레딧 무효화 — `credit_ledger` `type='refund_reversal'` 음수 row, subscription이면 `status='refunded'` |
 
 Response: `200 {received: true}` (Dodo는 200 이외는 자동 재시도)

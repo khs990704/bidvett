@@ -132,7 +132,7 @@ SELECT * FROM public.credit_ledger WHERE user_id <> auth.uid();
 ### 2.5 신규 가입자 트리거 동작 확인
 
 1. SQL Editor → `SELECT * FROM auth.users LIMIT 1;` 으로 가입자 1명 존재 확인 (없으면 §5 smoke test에서 가입 후 재확인).
-2. `SELECT * FROM public.credit_ledger WHERE user_id = '<uid>';` → `type='free_grant', delta=3, balance_after=3` row 존재해야 함.
+2. `SELECT * FROM public.credit_ledger WHERE user_id = '<uid>';` → `type='free_grant', delta=5, balance_after=5` row 존재해야 함.
 
 ---
 
@@ -222,14 +222,14 @@ vercel env add OPENAI_API_KEY production
 | Nickname | unit_amount | currency | mode | 매핑 plan | Vercel env 변수 |
 |----------|-------------|----------|------|----------|----------------|
 | `single_credit_099` | 99 ($0.99) | usd | one-time | `credit_single` | `NEXT_PUBLIC_DODO_PRODUCT_SINGLE` |
-| `weekly_pass_499` | 499 ($4.99) | usd | one-time | `weekly_pass` (앱이 7일 만료를 처리) | `NEXT_PUBLIC_DODO_PRODUCT_WEEKLY` |
+| `weekly_pass_499` | 499 ($4.99) | usd | recurring weekly | `weekly_pass` | `NEXT_PUBLIC_DODO_PRODUCT_WEEKLY` |
 | `monthly_19` | 1900 ($19) | usd | recurring monthly | `monthly_sub` | `NEXT_PUBLIC_DODO_PRODUCT_MONTHLY` |
 
 2. 각 Product의 ID를 복사 → Vercel Env Vars `NEXT_PUBLIC_DODO_PRODUCT_*` (§3.3)에 그대로 주입.
 
 3. **테스트 모드와 라이브 모드의 Product ID는 다르므로 Day 14 live 전환 시 본 절차를 live mode에서 재수행 후 Production env만 갱신**.
 
-> **Note on `weekly_pass`**: Dodo Payments의 recurring 옵션에 `weekly`가 있어도 idea_inquiry §Q2에서 "7일 주간 무제한"으로 확정 → 단순 one-time 결제 + 앱이 `period_end = checkout_at + 7 days`를 계산하는 모델. `subscriptions.plan='weekly_pass'`는 status='expired' 자연 만료 (재구매가 새 row). `_workspace/01_architecture.md §6.7`과 일치.
+> **Note on `weekly_pass`**: 주간 플랜은 recurring weekly 구독이다. 사용자가 Account → Billing에서 취소하면 Dodo에 next billing cancellation을 요청하고, 현재 paid period 종료일까지는 접근을 유지한다.
 
 > **세금 처리 (vs Stripe Tax)**: Dodo Payments는 **Merchant of Record**로 VAT/GST/Sales Tax를 자동 계산해 결제 시 가격에 합산하거나 별도 표시한다. Stripe Tax처럼 별도 활성화/설정/세무 등록이 **불필요**. Product 생성 시 tax_code/tax_behavior 필드 사용 안 함.
 
@@ -248,7 +248,7 @@ vercel env add OPENAI_API_KEY production
 4. Endpoint 생성 후 **Signing secret** 복사 → Vercel env `DODO_WEBHOOK_SECRET`. (Standard Webhooks 호환 — `standardwebhooks` npm으로 `webhook-id` / `webhook-timestamp` / `webhook-signature` HMAC-SHA256 검증.)
 5. **Test / Live 두 endpoint 별도 운영** — signing secret도 별도. Live 전환 시 production env만 swap.
 
-> **왜 `subscription.active`와 `subscription.renewed`를 분리해서 받는가?** Dodo의 monthly_sub 라이프사이클은 (a) 결제 성공 직후 `payment.succeeded`(one-time일 수도, 구독 first invoice일 수도), (b) 구독 활성화 시 `subscription.active`, (c) 매월 갱신 시 `subscription.renewed`로 신호를 보낸다. 우리는 (b)를 신규 row insert 트리거로, (c)를 `period_end += 30d` 트리거로 사용한다. 구 Stripe의 `customer.subscription.created` + `invoice.paid` 패턴을 이 두 이벤트가 흡수한다.
+> **왜 `subscription.active`와 `subscription.renewed`를 분리해서 받는가?** Dodo의 recurring 플랜 라이프사이클은 (a) 결제 성공 직후 `payment.succeeded`(one-time일 수도, 구독 first invoice일 수도), (b) 구독 활성화 시 `subscription.active`, (c) 주/월 갱신 시 `subscription.renewed`로 신호를 보낸다. 우리는 (b)를 신규 row insert 트리거로, (c)를 period rollover 트리거로 사용한다. 구 Stripe의 `customer.subscription.created` + `invoice.paid` 패턴을 이 두 이벤트가 흡수한다.
 
 ### 4.3 Webhook signing secret 보안 검증
 
@@ -317,14 +317,14 @@ vercel env ls production
 | # | 시나리오 | 기대 결과 | 검증 위치 |
 |---|---------|----------|----------|
 | 1 | `https://<domain>/` 접근 | 200 + Landing 페이지 | Browser |
-| 2 | `/login` → Google OAuth 클릭 → Google 동의 화면 → redirect 성공 | `/dashboard`로 이동, 잔여 크레딧 3 표시 | Browser + Supabase Auth Logs |
-| 3 | `auth.users` row 생성 직후 `credit_ledger`에 `free_grant +3` row 존재 | row 1개 | Supabase SQL Editor |
+| 2 | `/login` → Google OAuth 클릭 → Google 동의 화면 → redirect 성공 | `/dashboard`로 이동, 잔여 크레딧 5 표시 | Browser + Supabase Auth Logs |
+| 3 | `auth.users` row 생성 직후 `credit_ledger`에 `free_grant +5` row 존재 | row 1개 | Supabase SQL Editor |
 | 4 | `/onboarding`에서 이력서 paste → Extract → 4 필드 prefill → Save | `users_profile` row upsert 성공 | Supabase Data Browser |
-| 5 | `/dashboard`에서 골든 픽스처(`tests/fixtures/upwork-sample.txt`) paste → Analyze | 6초 이내 SAFE/WARNING/DANGER + match_score 표시, 크레딧 잔여 2 | Browser + Vercel Logs |
-| 6 | `analyses` row insert 확인 + `credit_ledger`에 `consume -1, balance_after=2` row | row 각 1개 | Supabase SQL Editor |
-| 7 | Pricing → "Buy single $0.99" → Dodo Hosted Checkout → test card (`[TBD: confirm Dodo test card — likely 4242 4242 4242 4242 standard sandbox]`) 결제 | `/dashboard?status=success`로 redirect, 크레딧 +1 = 3 | Browser + Dodo Dashboard |
+| 5 | `/dashboard`에서 골든 픽스처(`tests/fixtures/upwork-sample.txt`) paste → Analyze | 6초 이내 SAFE/WARNING/DANGER + match_score 표시, 크레딧 잔여 4 | Browser + Vercel Logs |
+| 6 | `analyses` row insert 확인 + `credit_ledger`에 `consume -1, balance_after=4` row | row 각 1개 | Supabase SQL Editor |
+| 7 | Pricing → "Buy single $0.99" → Dodo Hosted Checkout → test card (`[TBD: confirm Dodo test card — likely 4242 4242 4242 4242 standard sandbox]`) 결제 | `/dashboard?status=success`로 redirect, 크레딧 +1 = 5 | Browser + Dodo Dashboard |
 | 8 | `dodo_events` table에 event row + `processed=true` (PK = Standard Webhooks `webhook-id`) | row 1개 | Supabase SQL Editor |
-| 9 | Dodo Dashboard에서 해당 결제 `[Refund]` (full refund) → 30초 대기 → `refund.succeeded` webhook | `credit_ledger`에 `refund_reversal -1, balance_after=2` row | Supabase + Browser dashboard |
+| 9 | Dodo Dashboard에서 해당 결제 `[Refund]` (full refund) → 30초 대기 → `refund.succeeded` webhook | `credit_ledger`에 `refund_reversal -1, balance_after=4` row | Supabase + Browser dashboard |
 | 10 | 두 번째 Google 계정으로 로그인 후 첫 계정의 `/analyses/<id>` URL 접근 | 404 (RLS 차단) | Browser |
 | 11 | Rate limit: `/api/analyze` 60회 1분 내 호출 | 61번째 요청 429 `ERR_RATE_LIMITED` | curl + Vercel KV Inspector |
 | 12 | OpenAI key 일시 무효화 후 Analyze 시도 | 3회 retry 후 502 `ERR_LLM_UPSTREAM` (별명 `ERR_OPENAI_UPSTREAM`) + 크레딧 차감 0 | Vercel Logs + Supabase (no consume row) |

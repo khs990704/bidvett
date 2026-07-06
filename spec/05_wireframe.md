@@ -35,7 +35,7 @@
 │                                                                │
 │   [ Sign in with Google ]                                      │
 │                                                                │
-│   ✓ 3 free analyses on signup                                  │
+│   ✓ 5 free analyses on signup                                  │
 │   ✓ $0.99 single-shot / $4.99 weekly / $19 monthly             │
 │                                                                │
 ├────────────────────────────────────────────────────────────────┤
@@ -213,10 +213,10 @@ flowchart LR
 
 ```mermaid
 stateDiagram-v2
-  [*] --> Free3: Sign up (auto-grant +3)
-  Free3 --> OutOfCredits: 3 consumes
-  Free3 --> Free3: consume (-1) if balance>1
-  Free3 --> PaidOnly: buy single ($0.99) -> +1 perma
+  [*] --> Free5: Sign up (auto-grant +5)
+  Free5 --> OutOfCredits: 5 consumes
+  Free5 --> Free5: consume (-1) if balance>1
+  Free5 --> PaidOnly: buy single ($0.99) -> +1 perma
   PaidOnly --> OutOfCredits: balance = 0
   OutOfCredits --> SingleBought: buy $0.99
   OutOfCredits --> WeeklyActive: buy weekly $4.99

@@ -32,7 +32,7 @@ Upwork 프리랜서가 Connects(지원 토큰)를 낭비하지 않도록, 공고
 | # | 항목 | 결정 | 근거 |
 |---|------|------|------|
 | Q1 | 정량 룰 입력 수집 | 프론트 정규식 전처리 → OpenAI Structured Outputs로 4수치 추출 → 백엔드 Rule Engine 최종 판정 | idea_inquiry §Q1, spec/02 §3.3 |
-| Q2 | 결제 → 권한 변환 | 계정 단위 크레딧. 무료 3개 / $0.99 단건 +1개(영구) / $4.99 주간 무제한(주 100 소프트캡) / $19 월 무제한(월 500 소프트캡). 0회 사용 + 7일 내 환불만 허용 | idea_inquiry §Q2 |
+| Q2 | 결제 → 권한 변환 | 계정 단위 크레딧. 무료 5개 / $0.99 단건 +1개(영구) / $4.99 주간 무제한(주 100 소프트캡) / $19 월 무제한(월 500 소프트캡). 0회 사용 + 7일 내 환불만 허용 | idea_inquiry §Q2 |
 | Q3 | 프로필 데이터 구조 | (C) 하이브리드. 자유 텍스트 → LLM이 `skills[]`, `years_of_experience`, `target_hourly_rate`, `timezone` 추출 → 유저 확인/수정 → DB 저장 | idea_inquiry §Q3 |
 | Q4 | 운영자 기능 | (A) No-Code Admin Stack. Supabase Data Browser + Dodo Dashboard (PIVOT-01, 구 Stripe Dashboard). 어드민 UI 미개발. `analyses.is_reported`/`report_reason` + `system_prompts` 단일 테이블만 필수 | idea_inquiry §Q4 |
 | Q5 | UI 언어 | English-only | idea_inquiry §Q5 |
@@ -133,11 +133,11 @@ Upwork 프리랜서가 Connects(지원 토큰)를 낭비하지 않도록, 공고
 
 ### 11.1 결정
 
-`spec/` v1(2026-05-27 FROZEN)에서 결제 인프라로 Stripe Checkout + Webhook을 채택했으나, 2026-05-29 사용자 지시로 **Dodo Payments**로 전면 전환한다. 본 결정은 `idea_inquiry.md` Q2의 비즈니스 모델(무료 3개 / $0.99 단건 / $4.99 주간 / $19 월간 + 환불 정책)을 **그대로 유지**하며, 변경 범위는 **결제 인프라 레이어**에 한정된다.
+`spec/` v1(2026-05-27 FROZEN)에서 결제 인프라로 Stripe Checkout + Webhook을 채택했으나, 2026-05-29 사용자 지시로 **Dodo Payments**로 전면 전환한다. 본 결정은 `idea_inquiry.md` Q2의 비즈니스 모델(무료 5개 / $0.99 단건 / $4.99 주간 / $19 월간 + 환불 정책)을 **그대로 유지**하며, 변경 범위는 **결제 인프라 레이어**에 한정된다.
 
 ### 11.2 변경되지 않는 것 (불변)
 
-- 비즈니스 모델: 신규 가입 무료 크레딧 3개, $0.99 단건(영구 보존), $4.99 주간(7d 무제한 + 주 100 소프트 캡), $19 월(30d 무제한 + 월 500 소프트 캡)
+- 비즈니스 모델: 신규 가입 무료 크레딧 5개, $0.99 단건(영구 보존), $4.99 주간(7d 무제한 + 주 100 소프트 캡), $19 월(30d 무제한 + 월 500 소프트 캡)
 - 환불 정책: 0회 사용 + 7일 이내 100% 환불, 1회라도 쓰면 환불 불가
 - DB 모델: `credit_ledger`, `subscriptions` 컬럼/관계 그대로
 - Credit Pre-check → Deduct-on-Success 파이프라인 그대로

@@ -59,7 +59,11 @@ export function CreditBadge({ initial, reloadKey = 0 }: Props) {
             </Badge>
           </div>
           {data?.active_pass ? (
-            <PassLine label="Weekly Pass" data={data.active_pass} />
+            <PassLine
+              label="Weekly Pass"
+              data={data.active_pass}
+              showCancelHint={data.active_pass.cancel_at_period_end}
+            />
           ) : null}
           {data?.active_subscription ? (
             <PassLine
@@ -101,6 +105,7 @@ function PassLine({
     soft_cap: number;
     period_end?: string;
     expires_at?: string;
+    is_recurring?: boolean;
   };
   showCancelHint?: boolean;
 }) {
@@ -111,7 +116,11 @@ function PassLine({
       <span>
         {data.usage_this_period}/{data.soft_cap} used
       </span>
-      {end ? <span>· renews {formatDate(end)}</span> : null}
+      {end ? (
+        <span>
+          · {data.is_recurring === false ? "expires" : "renews"} {formatDate(end)}
+        </span>
+      ) : null}
       {showCancelHint ? <span className="text-warning">· cancels at period end</span> : null}
     </div>
   );

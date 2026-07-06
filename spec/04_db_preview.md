@@ -158,8 +158,8 @@ erDiagram
 | `usage_count` | int | not null, default 0 | 현재 기간 사용 횟수 |
 | `soft_cap` | int | not null | weekly=100, monthly=500 |
 | `dodo_customer_id` | text | not null | Dodo Payments customer 식별자 |
-| `dodo_subscription_id` | text | nullable | monthly_sub만 — Dodo subscription 식별자 |
-| `dodo_checkout_session_id` | text | nullable | weekly_pass (one-time) 추적 — Dodo checkout session 식별자 |
+| `dodo_subscription_id` | text | nullable | weekly_pass/monthly_sub — Dodo subscription 식별자 |
+| `dodo_checkout_session_id` | text | nullable | Hosted Checkout session 식별자 |
 | `created_at` | timestamptz | not null, default now() | |
 | `updated_at` | timestamptz | not null, default now() | trigger |
 
@@ -268,7 +268,7 @@ create policy "users_profile_update_own"
   1. 활성 subscription/pass가 있고 soft_cap 안이면 `usage_count++`
   2. 아니면 latest balance > 0 일 때 `credit_ledger`에 `(type=consume, delta=-1)` insert
   3. 둘 다 불가하면 throw → 호출자가 402 반환
-- `grant_free_credits_on_signup`: `auth.users` insert trigger로 신규 가입자에게 `(type=free_grant, delta=+3, balance_after=3)` 한 줄 자동 삽입
+- `grant_free_credits_on_signup`: `auth.users` insert trigger로 신규 가입자에게 `(type=free_grant, delta=+5, balance_after=5)` 한 줄 자동 삽입
 
 ## 7. 가정 / 미정
 
