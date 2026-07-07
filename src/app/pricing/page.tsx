@@ -1,7 +1,6 @@
 import { Header } from "@/components/nav/Header";
 import { Footer } from "@/components/nav/Footer";
 import { PricingCard, type PricingPlan } from "@/components/pricing/PricingCard";
-import { RefundDisclaimer } from "@/components/pricing/RefundDisclaimer";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const PLANS: PricingPlan[] = [
@@ -68,8 +67,6 @@ export default async function PricingPage() {
             <PricingCard key={p.plan} plan={p} signedIn={Boolean(user)} />
           ))}
         </section>
-
-        <RefundDisclaimer />
       </main>
       <Footer />
     </>

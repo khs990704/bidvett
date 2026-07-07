@@ -27,7 +27,7 @@
 - Dodo Payments 제품 카탈로그 ID 발급(`single_credit_099` / `weekly_pass_499` / `monthly_19`) — devops가 Dodo Dashboard에서 생성 후 환경변수 주입 (`_workspace/05_deploy_guide.md §4`).
 - Dodo test/live mode 키 발급 절차 명시 (deploy guide §4).
 - Dodo Customer Portal URL 형식 확인 — 미제공 시 support 이메일 안내로 대체.
-- 그 외 spec/ 내 `[TBD]`로 표기된 모든 항목 (GDPR 흐름, Email 채널, 환불 약관 카피, 모바일 키보드 처리 등) — `_workspace/` 단계에서 결정 시점·담당·기준 부여.
+- 그 외 spec/ 내 `[TBD]`로 표기된 모든 항목 (GDPR 흐름, Email 채널, 환불 정책 필요 여부, 모바일 키보드 처리 등) — `_workspace/` 단계에서 결정 시점·담당·기준 부여.
 
 스펙 변경 금지. 변경 필요 시 `_workspace/00_input.md`에 상충 사유를 기록한 뒤 `_workspace/`에서 우선 적용한다.
 

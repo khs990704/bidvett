@@ -289,7 +289,7 @@ tests/
   - `subscription.active` → 신규 weekly_pass/monthly_sub 활성화: `subscriptions` insert(`status='active'`, `period_end=next_billing_date`)
   - `subscription.renewed` → 구 `invoice.paid` 흡수. `subscriptions.period_end = next_billing_date`, `usage_count = 0`, `cancelled_at = null`
   - `subscription.cancelled` → `cancelled_at` 기록. 현재 paid period는 유지하고 다음 갱신은 차단
-  - `refund.succeeded` → 0회 사용 + 7일 이내 검증 → 크레딧 무효화 (`credit_ledger` `type='refund_reversal'`, `delta`는 원 결제분과 동일 절댓값의 negative). subscription이면 `status='refunded'`.
+  - `refund.succeeded` → 향후 환불 정책 확정 또는 Dodo 환불 처리 시 DB 권한 회수 동기화. 크레딧 무효화(`credit_ledger` `type='refund_reversal'`, `delta`는 원 결제분과 동일 절댓값의 negative). subscription이면 `status='refunded'`.
 - **멱등성**: 진입 첫 단계에 `dodo_events` insert (PK = Standard Webhooks `webhook-id` 헤더 값). 충돌 시 `processed=true`면 `200 OK` 즉시 반환.
 
 ### 6.8 `lib/rate-limit/kv.ts`
@@ -578,7 +578,7 @@ function callOpenAIWithRetry(req):
 - shadcn/ui 컴포넌트 의존: spec/05 §1 표. `Dialog`, `Alert`, `Progress`, `Badge`, `Tag input` (custom or shadcn-tags), `Number input`, `Select`, `Tabs`, `Card`, `Toast`.
 - Report Modal은 verdict에 따라 Safe/Risk 두 변형. `match_score === null` → Risk view 강제. **Risk view에서는 점수 비공개**(스포일러 방지).
 - 모바일 Analyze Textarea 키보드 가림: `viewport` meta `interactive-widget=resizes-content` + `useVirtualKeyboard` hook (frontend-dev 자체 결정).
-- Pricing 환불 약관 카피: spec/05 §2.2 footer `* Refund: 100% within 7 days if you haven't used any analysis.` 그대로 사용. **법무 검토 placeholder**: 별도 모달은 만들지 말고 footer 한 줄로 끝.
+- Pricing 환불 약관 카피: 현재 노출하지 않음. Privacy / Terms 링크만 유지하고 환불 정책은 TBD.
 
 ### Backend (`backend-dev`)
 - `analyze.v1` 시스템 프롬프트 본문은 `spec/03 §7` 그대로. `system_prompts` seed로 적재 (코드 하드코딩 금지).
@@ -595,7 +595,7 @@ function callOpenAIWithRetry(req):
 - 결제 E2E: Dodo Payments **test mode** (`[TBD: confirm Dodo test card number — likely 4242 4242 4242 4242 standard sandbox]`) + 3 plans 각각. 결제 후 `payment.succeeded` / `subscription.active` webhook 도착 확인.
 - Webhook 서명 검증 케이스: Standard Webhooks 헤더 3종(`webhook-id` / `webhook-timestamp` / `webhook-signature`) — (a) 정상 HMAC-SHA256 통과 (b) 잘못된 secret으로 401 → 400 변환 (c) timestamp staleness (5분 초과) 거부 (d) replay 동일 `webhook-id` 두 번째 호출 시 `dodo_events` 충돌 → 200 duplicate.
 - RLS 검증: 두 번째 계정으로 로그인 후 첫 계정의 `analyses`/`credit_ledger` row 접근 시도 → 403 확인.
-- 환불 시나리오: 결제 → 0회 사용 → 7일 이내 → Dodo Dashboard에서 [Refund] 클릭 → `refund.succeeded` webhook → `credit_ledger`에 `type='refund_reversal'` row 생성 확인.
+- 환불 시나리오: 환불 정책 확정 후 별도 정의. 현재는 `refund.succeeded` 수신 시 권한 회수 row/status 반영 가능성만 보존.
 
 ### DevOps (`devops-engineer`)
 - 환경변수 셋업: §10 표 전체. Vercel Project Env Vars에 Preview/Production 분리.

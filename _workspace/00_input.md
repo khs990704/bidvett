@@ -32,7 +32,7 @@ Upwork 프리랜서가 Connects(지원 토큰)를 낭비하지 않도록, 공고
 | # | 항목 | 결정 | 근거 |
 |---|------|------|------|
 | Q1 | 정량 룰 입력 수집 | 프론트 정규식 전처리 → OpenAI Structured Outputs로 4수치 추출 → 백엔드 Rule Engine 최종 판정 | idea_inquiry §Q1, spec/02 §3.3 |
-| Q2 | 결제 → 권한 변환 | 계정 단위 크레딧. 무료 5개 / $0.99 단건 +1개(영구) / $4.99 주간 무제한(주 100 소프트캡) / $19 월 무제한(월 500 소프트캡). 0회 사용 + 7일 내 환불만 허용 | idea_inquiry §Q2 |
+| Q2 | 결제 → 권한 변환 | 계정 단위 크레딧. 무료 5개 / $0.99 단건 +1개(영구) / $4.99 주간 무제한(주 100 소프트캡) / $19 월 무제한(월 500 소프트캡). 환불 정책은 TBD | idea_inquiry §Q2 |
 | Q3 | 프로필 데이터 구조 | (C) 하이브리드. 자유 텍스트 → LLM이 `skills[]`, `years_of_experience`, `target_hourly_rate`, `timezone` 추출 → 유저 확인/수정 → DB 저장 | idea_inquiry §Q3 |
 | Q4 | 운영자 기능 | (A) No-Code Admin Stack. Supabase Data Browser + Dodo Dashboard (PIVOT-01, 구 Stripe Dashboard). 어드민 UI 미개발. `analyses.is_reported`/`report_reason` + `system_prompts` 단일 테이블만 필수 | idea_inquiry §Q4 |
 | Q5 | UI 언어 | English-only | idea_inquiry §Q5 |
@@ -70,7 +70,7 @@ Upwork 프리랜서가 Connects(지원 토큰)를 낭비하지 않도록, 공고
 4. **GDPR Data Export/Delete 흐름** — `[TBD]` 유지하되 v1.1 마일스톤 명시. → **backend가 placeholder 엔드포인트만**
 5. **동일 공고 재분석 중복 차감 방지** — `job_text_hash` 컬럼은 schema에 미리 예약. 실제 캐싱은 v2. → **backend가 컬럼만 추가**
 6. ~~**Stripe EU VAT 자동 처리** — Stripe Tax 활성화 여부.~~ → ✅ **종결 (PIVOT-01)** — Dodo Payments가 Merchant of Record로 VAT/GST/Sales Tax 자동 처리.
-7. **Pricing 페이지 환불 약관 카피** — 법무 검토 필요. spec/05에 자리만 잡힘. → **frontend가 placeholder 카피로**
+7. **환불 정책** — 현재 미노출. 추후 법무/운영 검토 후 필요 시 Pricing/Terms에 추가.
 8. **모바일 뷰 Analyze Textarea 키보드 가림 처리** — `viewport` + CSS 처리. → **frontend 책임**
 
 ## 7. 디렉토리 레이아웃 가정 (구현 단계 시작점)
@@ -138,7 +138,7 @@ Upwork 프리랜서가 Connects(지원 토큰)를 낭비하지 않도록, 공고
 ### 11.2 변경되지 않는 것 (불변)
 
 - 비즈니스 모델: 신규 가입 무료 크레딧 5개, $0.99 단건(영구 보존), $4.99 주간(7d 무제한 + 주 100 소프트 캡), $19 월(30d 무제한 + 월 500 소프트 캡)
-- 환불 정책: 0회 사용 + 7일 이내 100% 환불, 1회라도 쓰면 환불 불가
+- 환불 정책: TBD. MVP 현재 카피/약관 placeholder에서는 환불 가능/불가를 단정하지 않음
 - DB 모델: `credit_ledger`, `subscriptions` 컬럼/관계 그대로
 - Credit Pre-check → Deduct-on-Success 파이프라인 그대로
 - 사용자 대면 흐름(Pricing → Hosted Checkout → 성공/취소 콜백 → Dashboard) 동일

@@ -45,7 +45,7 @@
 │  [Sample report screenshot]                                    │
 │  Risk: SAFE   |   Match: 82   |   Action tip preview...        │
 ├────────────────────────────────────────────────────────────────┤
-│  Footer  ·  Privacy  ·  Terms  ·  Refund Policy                │
+│  Footer  ·  Privacy  ·  Terms                                 │
 └────────────────────────────────────────────────────────────────┘
 ```
 
@@ -60,7 +60,6 @@
 │  (never expires) │  (soft cap 100)  │  (soft cap 500)          │
 │  [Buy]           │  [Start Pass]    │  [Subscribe]             │
 └──────────────────┴──────────────────┴──────────────────────────┘
-   * Refund: 100% within 7 days if you haven't used any analysis.
 ```
 
 ### 2.3 Login — `/login`
@@ -230,10 +229,7 @@ stateDiagram-v2
   MonthlyActive --> OutOfCredits: subscription canceled at period_end
   MonthlyCapHit --> MonthlyActive: new period starts (usage reset)
 
-  Refundable: 0 use within 7 days
-  WeeklyActive --> Refundable: t<7d AND usage=0
-  MonthlyActive --> Refundable: t<7d AND usage=0
-  Refundable --> RefundedZeroCredit: refund.succeeded
+  RefundPolicyTBD: refund policy TBD
 ```
 
 ### 4.2 Analysis Lifecycle
@@ -270,5 +266,5 @@ stateDiagram-v2
 ## 6. 가정 / 미정
 
 - `[가정]` Account Settings의 Notifications 탭은 v1.0에서 활성 (Resend 채택 시).
-- `[TBD]` Pricing 페이지에서 환불 약관 모달의 정확한 카피 (법무 검토).
+- `[TBD]` 환불 정책 필요 여부 및 카피 (법무/운영 검토 후 결정).
 - `[TBD]` 모바일 뷰의 Analyze Textarea 키보드 가림 처리.

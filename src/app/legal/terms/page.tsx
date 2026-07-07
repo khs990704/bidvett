@@ -16,7 +16,7 @@ export default function TermsPage() {
         <p className="mt-4 text-sm text-muted-foreground">
           Placeholder. The full Terms of Service is pending legal review. By
           using BidVett during the MVP period you acknowledge that the
-          service is provided as-is and that pricing, refund rules, and usage
+          service is provided as-is and that pricing, billing, and usage
           limits may change without notice.
         </p>
       </main>

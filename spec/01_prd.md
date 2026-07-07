@@ -37,7 +37,7 @@
 | FR-7 | Report Dashboard | Show a verdict modal: BLOCK on risk, SHOW SCORE on safe. | `CRITICAL_RISK` OR `DANGER` → "DO NOT APPLY" 큰 경고 + 사유 노출 / 둘 다 안전 시 점수+`action_tip` 노출 |
 | FR-8 | Credit Pre-check & Deduct-on-Success | A failed OpenAI call must not consume credits. | Pre-check Hold → Silent Retry x3 → 성공 시에만 1개 차감 (`Deduct-on-Success`) / 3회 실패 시 차감 0 + "OpenAI temporary error" 안내 |
 | FR-9 | Dodo Payments (3 tiers) | Convert payments into usage rights. | $0.99 = perma-credit +1 / $4.99 = 7-day pass (100 soft cap) / $19 = 30-day subscription (500 soft cap) / Dodo Webhook (`payment.succeeded` / `subscription.active|renewed|cancelled`) → Supabase 동기화 필수 |
-| FR-10 | Refund Sync | Refunds in Dodo Payments must reflect in Supabase credits. | `refund.succeeded` Webhook → 해당 크레딧 무효화 / 환불 정책: 0회 사용 + 7일 이내만 100% 환불 |
+| FR-10 | Refund Sync | If a refund is later supported or processed in Dodo Payments, it must reflect in Supabase credits. | `refund.succeeded` Webhook → 해당 크레딧/구독 권한 무효화. 사용자 환불 정책은 TBD |
 | FR-11 | Report Scam | Users can flag a result as scam for prompt tuning. | `analyses.is_reported=true`, `report_reason` text 저장 → Supabase Data Browser에서 운영자가 필터링 |
 | FR-12 | Pricing Page | A public pricing page with 3 plans. | Landing/Pricing route 공개 / Dodo Hosted Checkout 진입 버튼 |
 
@@ -76,7 +76,7 @@
 | 비용 가드 | OpenAI 호출 전 입력 토큰 길이 컷오프(16k) + 일일 계정당 호출 캡 | Soft cap (주 100 / 월 500) 외 추가 안전망 |
 | 확장성 | 입력 핸들러 모듈을 `lib/extractors/` 로 분리해 크롬 익스텐션 이식 시 재사용 | Q7 확장성 요구 반영 |
 | 관측성 | Vercel Analytics + Supabase Logs + Sentry(에러) | [가정] Sentry 도입 |
-| 컴플라이언스 | 디지털 재화 환불 약관 1줄 명시 / GDPR Data Export [TBD] / **VAT·GST·Sales Tax는 Dodo Payments가 Merchant of Record로 자동 처리** (별도 활성화 불필요) | |
+| 컴플라이언스 | Privacy / Terms placeholder 유지 / 환불 정책 [TBD] / GDPR Data Export [TBD] / **VAT·GST·Sales Tax는 Dodo Payments가 Merchant of Record로 자동 처리** (별도 활성화 불필요) | |
 | i18n | English-only at MVP. 모든 string은 `lib/i18n/en.ts` 또는 raw로 시작, 추후 키 추출 | |
 
 ## 4. 사용자 여정

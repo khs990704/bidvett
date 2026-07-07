@@ -3,7 +3,7 @@
  * Source: _workspace/02_api_spec.md §3.8, _workspace/00_input.md §11.3 (PIVOT-01).
  *
  * v1 used Stripe Checkout Sessions; v2 uses Dodo Payments Hosted Checkout.
- * Business model (plans, soft caps, refund window) is unchanged — only the
+ * Business model (plans, soft caps, payment policy) is unchanged — only the
  * payment provider integration layer changes.
  */
 import DodoPayments from 'dodopayments';

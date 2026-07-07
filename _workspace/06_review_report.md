@@ -248,7 +248,7 @@ Postgres row-level lock으로 동시 호출 시 한 트랜잭션만 통과. spec
 | `src/lib/risk-engine/__tests__/score.test.ts` | 9 | DANGER 마스킹, backend_critical 우선, [0,100] clamp, truncate |
 | `src/lib/rate-limit/__tests__/kv.test.ts` | 9 | sliding window 통과/거부/prune, SET NX lock, INCR daily cap, IP header 추출 |
 | `tests/integration/analyze.test.ts` | 5 | 4-attempts then 502, retry #2 성공, non-retriable 단일 attempt, schema mismatch, input_too_large |
-| `tests/integration/dodo-webhook.test.ts` (rev 2) | 12 | Standard Webhooks sig pass/fail/stale-timestamp/missing-headers, 5 events 분기 (`payment.succeeded` single/weekly_pass / `subscription.active` / `subscription.renewed` / `subscription.cancelled` / `refund.succeeded` within7d / after 7d / unhandled / missing metadata) |
+| `tests/integration/dodo-webhook.test.ts` (rev 2) | 12 | Standard Webhooks sig pass/fail/stale-timestamp/missing-headers, 이벤트 분기 (`payment.succeeded` single/weekly_pass / `subscription.active` / `subscription.renewed` / `subscription.cancelled` / future `refund.succeeded` sync / unhandled / missing metadata) |
 | `tests/integration/rls.test.ts` | 14 | 6 테이블 RLS ENABLED, 정책 이름, deny-by-default, auth.uid()=user_id 보편 적용, live placeholder |
 | `src/lib/extractors/__tests__/upwork.test.ts` (frontend 작성, qa 검증) | 6 | T1~T6 모두 통과 |
 | **합계 (이번 사이클)** | **65** (rev 2 +2 dodo-webhook 케이스) | 기존 frontend의 6 추가하여 **총 71** |
@@ -271,7 +271,7 @@ include: [
 | 영역 | 검증 결과 |
 |------|----------|
 | 에러 메시지 (`DEFAULT_MESSAGES`) | 🟢 16종 모두 영어 |
-| Pricing footer | 🟢 `* Refund: 100% within 7 days if you haven't used any analysis.` (deploy guide §13.1, _workspace/01 §13에 명시된 단일 라인) |
+| Pricing footer | 🟢 환불 정책 미노출. Privacy / Terms 링크만 유지 |
 | GDPR placeholder | 🟢 "Data export will be available in v1.1." / "Account deletion will be available in v1.1." |
 | OAuth 에러 redirect | 🟢 `?error=oauth_failed` (URL param) |
 | 코드 주석 한국어 | 🟢 사용자 비노출 영역만 (e.g. `src/lib/extractors/upwork.ts` 정규식 설명) — Q5 영향 없음 |
@@ -292,7 +292,7 @@ include: [
 | 4 | GDPR Export/Delete | ✅ Placeholder 라우트 2종 501 (`src/app/api/gdpr/{export,delete}/route.ts`) | v1.1 |
 | 5 | `job_text_hash` 컬럼 (재분석 캐시) | ✅ 컬럼 예약, sha256 계산 후 RPC 전달 (`analyze/route.ts:241`). MVP 캐시 lookup 미사용 | v2.x dedup |
 | 6 | ~~Stripe EU VAT 자동 처리~~ → **Dodo MoR 자동 처리 (완료)** | ✅ PIVOT-01로 종결. Dodo가 VAT/GST/Sales Tax 전반 자동 처리 (deploy §4.4 갱신) | — |
-| 7 | Pricing 환불 약관 카피 | ✅ Single-line footer (`* Refund: 100%...`) | 법무 검토 시 modal 분리 |
+| 7 | Pricing 환불 약관 카피 | ⬜ TBD. 현재 미노출 | 법무 검토 후 결정 |
 | 8 | 모바일 키보드 가림 | 🟡 frontend 자체 결정 (viewport hint) — 수동 §7.3 체크리스트로 검증 | — |
 
 **아키텍처 deferred** (deploy guide §13):

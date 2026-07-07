@@ -486,7 +486,7 @@ return { checkout_url: session.url, session_id: session.id };
 | `subscription.active` | 신규 weekly_pass/monthly_sub 활성화 — `subscriptions` insert(plan, status='active', period_end=Dodo next_billing_date, soft_cap, dodo_subscription_id=<from payload>) |
 | `subscription.renewed` | 구 `invoice.paid` 흡수. weekly_pass/monthly_sub 갱신: `subscriptions.period_end = next_billing_date`, `usage_count = 0`, `cancelled_at = null` |
 | `subscription.cancelled` | 다음 갱신 차단 신호. `subscriptions.cancelled_at` 기록, `status='active'` 유지해서 현재 paid period는 보존 |
-| `refund.succeeded` | (1) payload의 원 결제 식별 (metadata.user_id 또는 dodo_payment_id) (2) 0회 사용 + 7일 이내 검증 (3) `credit_ledger` insert(type='refund_reversal', delta=원 결제의 +N의 negative) (4) subscription이었으면 `status='refunded'` |
+| `refund.succeeded` | 향후 환불 정책 확정 또는 Dodo 환불 처리 시 DB 권한 회수 동기화. (1) payload의 원 결제 식별 (metadata.user_id 또는 dodo_payment_id) (2) `credit_ledger` insert(type='refund_reversal', delta=원 결제의 +N의 negative) (3) subscription이면 `status='refunded'` |
 
 **Internal sequence** (의사 시그니처 — `// [TBD: confirm exact Dodo Payments SDK signature]`):
 ```ts
@@ -521,7 +521,7 @@ await supabaseAdmin.from('dodo_events').insert(
 6. `update dodo_events set processed=true, processed_at=now() where id=webhook-id`
 7. `200 {received:true}`
 
-**환불 안전성**: `refund.succeeded` 핸들러는 Dodo Dashboard에서 환불 클릭 시 자동 발생. 7일 초과 또는 사용이력 발견 시에도 환불은 **이미 Dodo Payments에서 완료**된 상태 — 운영자 책임으로 간주하고 DB 처리는 그대로 수행 (`credit_ledger` 음수 row). Sentry에 warning 캡처.
+**환불 안전성**: 사용자 환불 정책은 TBD. 앱은 현재 환불 가능/불가를 고지하지 않는다. `refund.succeeded`는 향후 정책 확정 또는 Dodo 측 환불 이벤트 발생 시 DB 권한 회수를 동기화하기 위한 이벤트로만 취급한다.
 
 > **보안 권고**: Standard Webhooks signature는 timing-safe compare + replay window(timestamp staleness) 처리가 까다롭다. `standardwebhooks` npm 라이브러리 사용 강력 권장 — 자체 구현은 timing attack 또는 replay 결함 위험.
 

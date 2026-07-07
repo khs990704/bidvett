@@ -285,7 +285,7 @@ const event = wh.verify(rawBody, {
 | `subscription.active` | 신규 weekly_pass/monthly_sub 활성화 — `subscriptions` insert(period_end=next_billing_date, usage_count=0) |
 | `subscription.renewed` | weekly_pass/monthly_sub 갱신 — `subscriptions.period_end = next_billing_date`, `usage_count = 0`, `cancelled_at = null` |
 | `subscription.cancelled` | 구독 갱신 취소 — `subscriptions.cancelled_at` 기록, 현재 period_end까지 접근 유지 |
-| `refund.succeeded` | 7일/0회 사용 검증 후 크레딧 무효화 — `credit_ledger` `type='refund_reversal'` 음수 row, subscription이면 `status='refunded'` |
+| `refund.succeeded` | 향후 환불 정책 확정 또는 Dodo 환불 처리 시 DB 권한 회수 동기화 — `credit_ledger` `type='refund_reversal'` 음수 row, subscription이면 `status='refunded'` |
 
 Response: `200 {received: true}` (Dodo는 200 이외는 자동 재시도)
 
