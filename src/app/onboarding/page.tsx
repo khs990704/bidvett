@@ -2,6 +2,7 @@ import { Header } from "@/components/nav/Header";
 import { Footer } from "@/components/nav/Footer";
 import { ProfileWizard } from "@/components/onboarding/ProfileWizard";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { Badge } from "@/components/ui/badge";
 
 export default async function OnboardingPage() {
   const supabase = await createSupabaseServerClient();
@@ -37,6 +38,12 @@ export default async function OnboardingPage() {
             We use this to score job matches and tailor your action tips. Edit
             anything; the AI is just a starting point.
           </p>
+          <div className="flex flex-wrap gap-2 pt-3">
+            <Badge variant="outline">Skills</Badge>
+            <Badge variant="outline">Experience</Badge>
+            <Badge variant="outline">Target rate</Badge>
+            <Badge variant="outline">Timezone</Badge>
+          </div>
         </div>
         <ProfileWizard initial={initial} />
       </main>

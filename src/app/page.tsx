@@ -9,7 +9,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { CheckCircle2, Shield, Zap, Target } from "lucide-react";
+import {
+  CheckCircle2,
+  Shield,
+  Zap,
+  Target,
+  UserRound,
+  ClipboardPaste,
+  FileSearch,
+} from "lucide-react";
 
 export default function LandingPage() {
   return (
@@ -45,6 +53,41 @@ export default function LandingPage() {
               / $4.99 weekly / $19 monthly
             </li>
           </ul>
+        </section>
+
+        <section className="mt-16 border-y py-8">
+          <div className="grid gap-5 md:grid-cols-4">
+            {[
+              {
+                icon: <UserRound className="h-5 w-5" />,
+                title: "Create profile",
+                body: "Paste your resume or Upwork bio once so BidVett knows your skills, rate, and timezone.",
+              },
+              {
+                icon: <ClipboardPaste className="h-5 w-5" />,
+                title: "Copy the job",
+                body: "Open an Upwork job, select the full page, copy it, then paste it into the dashboard.",
+              },
+              {
+                icon: <FileSearch className="h-5 w-5" />,
+                title: "Run analysis",
+                body: "BidVett strips page noise, checks client risk signals, and compares the job to your profile.",
+              },
+              {
+                icon: <Target className="h-5 w-5" />,
+                title: "Decide faster",
+                body: "Use the verdict, match score, and action tip to apply, skip, or report the posting.",
+              },
+            ].map((step) => (
+              <div key={step.title} className="space-y-2">
+                <div className="flex items-center gap-2 text-primary">
+                  {step.icon}
+                  <h2 className="text-sm font-semibold">{step.title}</h2>
+                </div>
+                <p className="text-sm text-muted-foreground">{step.body}</p>
+              </div>
+            ))}
+          </div>
         </section>
 
         <section className="mt-20 grid gap-6 sm:grid-cols-3">

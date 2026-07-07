@@ -123,7 +123,7 @@ export function ProfileWizard({ initial }: Props) {
             value={resumeText}
             onChange={(e) => setResumeText(e.target.value)}
             rows={12}
-            placeholder="Paste freely. The AI will extract skills, years of experience, hourly rate, and timezone."
+            placeholder="Paste your current profile text. Include what you build, your main tools, years of experience, preferred hourly rate, and timezone if available."
             data-testid="resume-textarea"
           />
           <div className="flex items-center justify-between text-xs">
@@ -159,7 +159,8 @@ export function ProfileWizard({ initial }: Props) {
               data-testid="skills-input"
             />
             <p className="text-xs text-muted-foreground">
-              5–15 entries recommended. Press Enter or comma to add.
+              These skills are matched against each job. 5–15 entries
+              recommended. Press Enter or comma to add.
             </p>
           </div>
 

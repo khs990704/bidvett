@@ -69,14 +69,14 @@ export function PasteAnalyzer({ onAnalyzed }: Props) {
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
           rows={14}
-          placeholder="Paste the entire Upwork job page (job title, description, client info, activity panel). We strip nav and footer automatically."
+          placeholder="Example: Upwork job title, description, budget/rate, client info, payment status, hire rate, and activity panel. Full-page paste is best."
           className="font-mono text-xs"
           data-testid="paste-textarea"
         />
         <div className="flex items-center justify-between gap-3">
           <span className="text-xs text-muted-foreground">
-            {raw.length.toLocaleString()} chars · cleans to{" "}
-            {extractUpworkCoreText(raw).length.toLocaleString()} after preprocessing
+            Paste from Upwork, then review the cleaned length:{" "}
+            {extractUpworkCoreText(raw).length.toLocaleString()} chars
           </span>
           <Button
             onClick={onAnalyze}
