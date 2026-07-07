@@ -40,9 +40,9 @@ export default async function DashboardPage() {
           <div className="space-y-1">
             <p className="font-medium">Use the full Upwork job page</p>
             <p className="text-muted-foreground">
-              Open the job, select the page content, copy it, and paste it
-              below. BidVett will remove navigation, footer text, and other page
-              noise before analyzing.
+              Open the job on Upwork, click the page, press Ctrl+A on Windows
+              or Cmd+A on Mac, copy, then paste below. BidVett removes
+              navigation, footer text, and other page noise before analyzing.
             </p>
           </div>
         </div>
